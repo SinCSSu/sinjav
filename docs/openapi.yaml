@@ -1,0 +1,793 @@
+openapi: 3.1.0
+info:
+  title: sinJav API
+  description: |
+    sinJav 后端 API：JAV 影片目录扫描、番号识别、JavBus/JavDB 元数据刮削、文件整理（硬链接/软链接/移动/复制）与媒体中心兼容输出（nfo + 封面/剧照）。
+
+    设计原则（参考 JavBoss）：
+    - 零侵入：除移动模式外不修改源目录文件，整理结果与数据独立存放
+    - 元数据绑定文件指纹（路径 + 大小 + mtime）而非文件名
+    - 全部操作由 API 触发，无定时任务
+  version: 0.1.0
+servers:
+  - url: http://localhost:8656
+    description: 本地开发
+
+tags:
+  - name: scan
+    description: 目录扫描与番号识别
+  - name: scrape
+    description: 元数据刮削（JavBus / JavDB）
+  - name: organize
+    description: 文件整理（硬链接/软链接/移动/复制）与 nfo、图片输出
+  - name: movies
+    description: 影片元数据查询
+  - name: file-records
+    description: 文件记录查询
+  - name: jobs
+    description: 异步任务状态查询
+  - name: settings
+    description: 运行时配置
+
+paths:
+  /api/v1/scans:
+    post:
+      tags: [scan]
+      operationId: triggerScan
+      summary: 触发目录扫描
+      description: |
+        递归扫描指定源目录（零侵入，只读取），识别视频文件中的 JAV 番号并写入 file_records。
+        已存在（路径相同且大小/mtime 未变化）的文件会被跳过，支持增量扫描。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ScanRequest'
+      responses:
+        '202':
+          description: 任务已创建，异步执行
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JobAccepted'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '409':
+          description: 已有同类任务在运行
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+
+  /api/v1/scrape:
+    post:
+      tags: [scrape]
+      operationId: triggerScrape
+      summary: 触发元数据刮削
+      description: |
+        从 JavBus / JavDB 刮削元数据并入库。可指定番号列表；不指定时处理所有「有文件记录但未刮削」的番号。
+        刮削失败的番号记录失败原因，可通过再次调用本接口重试。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ScrapeRequest'
+      responses:
+        '202':
+          description: 任务已创建，异步执行
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JobAccepted'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '409':
+          description: 已有同类任务在运行
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+
+  /api/v1/organize:
+    post:
+      tags: [organize]
+      operationId: triggerOrganize
+      summary: 触发文件整理
+      description: |
+        将已刮削的文件按命名模板整理到目标目录，并生成 .nfo、poster.jpg、fanart.jpg、剧照。
+        mode 决定整理方式：
+        - `hardlink`：硬链接（需同一分区，Windows 需管理员或开发者模式）
+        - `symlink`：符号链接（Windows 需管理员或开发者模式）
+        - `move`：移动（唯一会修改源目录的模式）
+        - `copy`：复制
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OrganizeRequest'
+      responses:
+        '202':
+          description: 任务已创建，异步执行
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JobAccepted'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '409':
+          description: 已有同类任务在运行
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+
+  /api/v1/pipeline:
+    post:
+      tags: [scan]
+      operationId: triggerPipeline
+      summary: 触发组合任务（扫描 → 刮削 → 整理）
+      description: |
+        一次性执行完整流水线：按 scan 参数扫描识别 → 按刮削配置刮削 → 按 organize 参数整理。
+        各段配置可省略（scan.sourceDirs 必填），省略的段使用全局配置。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                scan:
+                  $ref: '#/components/schemas/ScanRequest'
+                scrape:
+                  $ref: '#/components/schemas/ScrapeRequest'
+                organize:
+                  $ref: '#/components/schemas/OrganizeRequest'
+      responses:
+        '202':
+          description: 任务已创建，异步执行
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JobAccepted'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '409':
+          description: 已有同类任务在运行
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+
+  /api/v1/movies:
+    get:
+      tags: [movies]
+      operationId: listMovies
+      summary: 分页查询影片元数据
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+        - name: keyword
+          in: query
+          description: 按番号或标题模糊匹配
+          schema:
+            type: string
+        - name: status
+          in: query
+          description: 刮削状态过滤
+          schema:
+            $ref: '#/components/schemas/MovieStatus'
+        - name: sort
+          in: query
+          schema:
+            type: string
+            enum: [release_date, number, created_at]
+            default: created_at
+        - name: order
+          in: query
+          schema:
+            type: string
+            enum: [asc, desc]
+            default: desc
+      responses:
+        '200':
+          description: 影片分页列表
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MoviePage'
+
+  /api/v1/movies/{number}:
+    get:
+      tags: [movies]
+      operationId: getMovie
+      summary: 查询单部影片详情（含文件记录）
+      parameters:
+        - $ref: '#/components/parameters/NumberPath'
+      responses:
+        '200':
+          description: 影片详情
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MovieDetail'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/v1/file-records:
+    get:
+      tags: [file-records]
+      operationId: listFileRecords
+      summary: 分页查询文件记录
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+        - name: number
+          in: query
+          description: 按番号过滤
+          schema:
+            type: string
+        - name: recognizeStatus
+          in: query
+          schema:
+            $ref: '#/components/schemas/RecognizeStatus'
+        - name: organizeStatus
+          in: query
+          schema:
+            $ref: '#/components/schemas/OrganizeStatus'
+      responses:
+        '200':
+          description: 文件记录分页列表
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FileRecordPage'
+
+  /api/v1/jobs:
+    get:
+      tags: [jobs]
+      operationId: listJobs
+      summary: 查询任务列表
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+        - name: type
+          in: query
+          schema:
+            $ref: '#/components/schemas/JobType'
+        - name: status
+          in: query
+          schema:
+            $ref: '#/components/schemas/JobStatus'
+      responses:
+        '200':
+          description: 任务分页列表
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JobPage'
+
+  /api/v1/jobs/{jobId}:
+    get:
+      tags: [jobs]
+      operationId: getJob
+      summary: 查询任务状态、进度与失败明细
+      parameters:
+        - name: jobId
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '200':
+          description: 任务详情
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Job'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/v1/settings:
+    get:
+      tags: [settings]
+      operationId: getSettings
+      summary: 查询运行时配置
+      responses:
+        '200':
+          description: 当前生效配置（application.yaml 默认值 + 数据库覆盖值）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Settings'
+    put:
+      tags: [settings]
+      operationId: updateSettings
+      summary: 更新运行时配置（持久化到数据库，立即生效）
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SettingsUpdate'
+      responses:
+        '200':
+          description: 更新后的完整配置
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Settings'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+
+components:
+  parameters:
+    Page:
+      name: page
+      in: query
+      schema:
+        type: integer
+        minimum: 1
+        default: 1
+    PageSize:
+      name: size
+      in: query
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 200
+        default: 20
+    NumberPath:
+      name: number
+      in: path
+      required: true
+      description: 规范化番号，如 ABP-123、FC2-PPV-1234567
+      schema:
+        type: string
+
+  responses:
+    NotFound:
+      description: 资源不存在
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    ValidationError:
+      description: 请求参数校验失败
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+
+  schemas:
+    # ---------- 请求 ----------
+    ScanRequest:
+      type: object
+      description: 扫描请求
+      properties:
+        sourceDirs:
+          type: array
+          minItems: 1
+          items:
+            type: string
+          description: 源目录绝对路径列表（零侵入，只读取）
+        recursive:
+          type: boolean
+          default: true
+          description: 是否递归子目录
+        extensions:
+          type: array
+          items:
+            type: string
+          description: 视频扩展名白名单（省略时使用全局配置）
+      required: [sourceDirs]
+
+    ScrapeRequest:
+      type: object
+      description: 刮削请求
+      properties:
+        numbers:
+          type: array
+          items:
+            type: string
+          description: 指定番号列表；省略时刮削全部「未刮削」番号
+        sources:
+          type: array
+          items:
+            type: string
+            enum: [javbus, javdb]
+          description: 数据源及优先顺序（省略时使用全局配置 source-order）
+        strategy:
+          type: string
+          enum: [fallback, merge]
+          description: fallback=主备回退；merge=字段合并（主源优先）
+      required: []
+
+    OrganizeRequest:
+      type: object
+      description: 整理请求
+      properties:
+        targetDir:
+          type: string
+          description: 目标目录绝对路径（省略时使用全局配置）
+        mode:
+          type: string
+          enum: [hardlink, symlink, move, copy]
+          description: 整理方式（省略时使用全局配置）
+        namingTemplate:
+          type: string
+          description: 命名模板（省略时使用全局配置）。可用占位符：{number} {title} {date} {maker} {series} {actress}（多女优取第一个）
+          example: '{number}/{number} - {title}'
+        conflictPolicy:
+          type: string
+          enum: [skip, overwrite, rename]
+          description: 目标已存在时的策略（省略时使用全局配置）
+        generateNfo:
+          type: boolean
+          description: 是否生成 .nfo（省略时使用全局配置）
+        downloadImages:
+          type: boolean
+          description: 是否下载 poster.jpg / fanart.jpg / 剧照（省略时使用全局配置）
+        numbers:
+          type: array
+          items:
+            type: string
+          description: 仅整理指定番号；省略时整理所有「已刮削且待整理」的文件
+      required: []
+
+    SettingsUpdate:
+      type: object
+      description: 配置更新（仅提交需要修改的键）
+      properties:
+        sourceOrder:
+          type: string
+          example: 'javbus, javdb'
+        strategy:
+          type: string
+          enum: [fallback, merge]
+        userAgent:
+          type: string
+        javdbCookie:
+          type: string
+          description: JavDB 登录 Cookie
+        proxyHost:
+          type: string
+        proxyPort:
+          type: integer
+        requestIntervalMs:
+          type: integer
+          description: 刮削请求最小间隔（毫秒），限速防风控
+        concurrency:
+          type: integer
+          description: 刮削全局并发数
+        targetDir:
+          type: string
+        mode:
+          type: string
+          enum: [hardlink, symlink, move, copy]
+        namingTemplate:
+          type: string
+        conflictPolicy:
+          type: string
+          enum: [skip, overwrite, rename]
+        generateNfo:
+          type: boolean
+        downloadImages:
+          type: boolean
+      required: []
+
+    # ---------- 任务 ----------
+    JobAccepted:
+      type: object
+      properties:
+        jobId:
+          type: integer
+          format: int64
+        type:
+          $ref: '#/components/schemas/JobType'
+        status:
+          $ref: '#/components/schemas/JobStatus'
+      required: [jobId, type, status]
+
+    JobType:
+      type: string
+      enum: [scan, scrape, organize, pipeline]
+
+    JobStatus:
+      type: string
+      enum: [running, completed, failed, cancelled]
+
+    Job:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        type:
+          $ref: '#/components/schemas/JobType'
+        status:
+          $ref: '#/components/schemas/JobStatus'
+        params:
+          type: object
+          additionalProperties: true
+          description: 任务请求参数
+        totalItems:
+          type: integer
+        doneItems:
+          type: integer
+        failItems:
+          type: integer
+        errors:
+          type: array
+          description: 失败明细
+          items:
+            $ref: '#/components/schemas/JobError'
+        startedAt:
+          type: string
+          format: date-time
+        finishedAt:
+          type: string
+          format: date-time
+          nullable: true
+      required: [id, type, status, totalItems, doneItems, failItems, startedAt]
+
+    JobError:
+      type: object
+      properties:
+        item:
+          type: string
+          description: 失败项（源路径或番号）
+        reason:
+          type: string
+      required: [item, reason]
+
+    JobPage:
+      type: object
+      allOf:
+        - $ref: '#/components/schemas/PageMeta'
+        - type: object
+          properties:
+            items:
+              type: array
+              items:
+                $ref: '#/components/schemas/Job'
+
+    # ---------- 影片 ----------
+    MovieStatus:
+      type: string
+      enum: [pending, scraped, failed]
+
+    MovieSummary:
+      type: object
+      properties:
+        number:
+          type: string
+          example: ABP-123
+        title:
+          type: string
+          nullable: true
+        releaseDate:
+          type: string
+          format: date
+          nullable: true
+        maker:
+          type: string
+          nullable: true
+        actresses:
+          type: array
+          items:
+            type: string
+        coverUrl:
+          type: string
+          nullable: true
+        status:
+          $ref: '#/components/schemas/MovieStatus'
+      required: [number, status]
+
+    Movie:
+      type: object
+      allOf:
+        - $ref: '#/components/schemas/MovieSummary'
+        - type: object
+          properties:
+            rawNumber:
+              type: string
+              nullable: true
+            titleZh:
+              type: string
+              nullable: true
+            director:
+              type: string
+              nullable: true
+            label:
+              type: string
+              nullable: true
+            series:
+              type: string
+              nullable: true
+            durationMin:
+              type: integer
+              nullable: true
+            previewUrls:
+              type: array
+              items:
+                type: string
+            plot:
+              type: string
+              nullable: true
+            source:
+              type: string
+              enum: [javbus, javdb, merged]
+              nullable: true
+            failReason:
+              type: string
+              nullable: true
+            scrapedAt:
+              type: string
+              format: date-time
+              nullable: true
+            createdAt:
+              type: string
+              format: date-time
+            updatedAt:
+              type: string
+              format: date-time
+
+    MovieDetail:
+      type: object
+      allOf:
+        - $ref: '#/components/schemas/Movie'
+        - type: object
+          properties:
+            fileRecords:
+              type: array
+              items:
+                $ref: '#/components/schemas/FileRecord'
+
+    MoviePage:
+      type: object
+      allOf:
+        - $ref: '#/components/schemas/PageMeta'
+        - type: object
+          properties:
+            items:
+              type: array
+              items:
+                $ref: '#/components/schemas/MovieSummary'
+
+    # ---------- 文件记录 ----------
+    RecognizeStatus:
+      type: string
+      enum: [recognized, unrecognized, filtered]
+
+    OrganizeStatus:
+      type: string
+      enum: [pending, organized, failed, skipped]
+
+    FileRecord:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        sourcePath:
+          type: string
+        fileName:
+          type: string
+        fileSize:
+          type: integer
+          format: int64
+        fileMtime:
+          type: string
+          format: date-time
+        number:
+          type: string
+          nullable: true
+        recognizeStatus:
+          $ref: '#/components/schemas/RecognizeStatus'
+        targetPath:
+          type: string
+          nullable: true
+        linkMode:
+          type: string
+          enum: [hardlink, symlink, move, copy]
+          nullable: true
+        organizeStatus:
+          $ref: '#/components/schemas/OrganizeStatus'
+        organizeError:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+      required: [id, sourcePath, fileName, fileSize, recognizeStatus, organizeStatus, createdAt]
+
+    FileRecordPage:
+      type: object
+      allOf:
+        - $ref: '#/components/schemas/PageMeta'
+        - type: object
+          properties:
+            items:
+              type: array
+              items:
+                $ref: '#/components/schemas/FileRecord'
+
+    # ---------- 配置 ----------
+    Settings:
+      type: object
+      properties:
+        sourceOrder:
+          type: string
+        strategy:
+          type: string
+          enum: [fallback, merge]
+        userAgent:
+          type: string
+        javdbCookie:
+          type: string
+        proxyHost:
+          type: string
+        proxyPort:
+          type: integer
+        requestIntervalMs:
+          type: integer
+        concurrency:
+          type: integer
+        targetDir:
+          type: string
+        mode:
+          type: string
+          enum: [hardlink, symlink, move, copy]
+        namingTemplate:
+          type: string
+        conflictPolicy:
+          type: string
+          enum: [skip, overwrite, rename]
+        generateNfo:
+          type: boolean
+        downloadImages:
+          type: boolean
+
+    # ---------- 通用 ----------
+    PageMeta:
+      type: object
+      properties:
+        page:
+          type: integer
+        size:
+          type: integer
+        total:
+          type: integer
+          format: int64
+        totalPages:
+          type: integer
+      required: [page, size, total, totalPages]
+
+    Problem:
+      type: object
+      description: RFC 9457 Problem Detail 统一错误响应
+      properties:
+        type:
+          type: string
+        title:
+          type: string
+        status:
+          type: integer
+        detail:
+          type: string
+        instance:
+          type: string
+        errors:
+          type: array
+          description: 字段级校验错误（仅 400）
+          items:
+            type: object
+            properties:
+              field:
+                type: string
+              message:
+                type: string
