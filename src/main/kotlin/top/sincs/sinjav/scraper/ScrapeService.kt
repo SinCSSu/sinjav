@@ -18,6 +18,7 @@ class ScrapeService(
     private val movies: MovieRepository,
     private val jobs: JobRepository,
     private val recognizer: NumberRecognizer,
+    private val imageStore: ImageStore,
 ) {
 
     private val log = LoggerFactory.getLogger(ScrapeService::class.java)
@@ -45,6 +46,7 @@ class ScrapeService(
                     source = source,
                     actresses = meta.actresses, genres = meta.genres,
                 )
+                imageStore.downloadAll(number, meta.coverUrl, meta.previewUrls)
                 log.info("刮削成功 {}: {}", number, meta.title)
             } catch (e: Exception) {
                 failed++

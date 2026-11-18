@@ -36,12 +36,18 @@ data class AsyncProps(
     var jobPoolQueueCapacity: Int = 100,
 )
 
+data class ImageProps(
+    var download: Boolean = true,
+    var dir: String = "./data/images",
+)
+
 @ConfigurationProperties(prefix = "sinjav")
 data class AppProperties(
     val scraper: ScraperProps = ScraperProps(),
     val organize: OrganizeProps = OrganizeProps(),
     val scan: ScanProps = ScanProps(),
     val async: AsyncProps = AsyncProps(),
+    val images: ImageProps = ImageProps(),
 ) {
     fun videoExtensionSet(): Set<String> =
         scan.videoExtensions.split(',').map { it.trim().lowercase() }.filter { it.isNotBlank() }.toSet()

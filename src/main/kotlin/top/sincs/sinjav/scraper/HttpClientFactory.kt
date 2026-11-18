@@ -20,15 +20,30 @@ import kotlin.concurrent.write
 @Component
 class HttpClientFactory(private val props: AppProperties) {
 
-    private val client: HttpClient by lazy {
-        val builder = HttpClient.newBuilder()
-            .connectTimeout(Duration.ofMillis(props.scraper.timeoutMs))
-            .followRedirects(HttpClient.Redirect.NORMAL)
-        val host = props.scraper.proxyHost
-        if (host.isNotBlank() && props.scraper.proxyPort > 0) {
-            builder.proxy(ProxySelector.of(InetSocketAddress(host, props.scraper.proxyPort)))
+    // HttpClient 随代理配置重建：SettingsService 运行时改代理后立即生效，无需重启
+    @Volatile
+    private var cachedClient: HttpClient? = null
+
+    @Volatile
+    private var cachedProxyKey: Pair<String, Int>? = null
+
+    private fun client(): HttpClient {
+        val key = props.scraper.proxyHost to props.scraper.proxyPort
+        cachedClient?.takeIf { cachedProxyKey == key }?.let { return it }
+        synchronized(this) {
+            cachedClient?.takeIf { cachedProxyKey == key }?.let { return it }
+            val builder = HttpClient.newBuilder()
+                .connectTimeout(Duration.ofMillis(props.scraper.timeoutMs))
+                .followRedirects(HttpClient.Redirect.NORMAL)
+            val host = props.scraper.proxyHost
+            if (host.isNotBlank() && props.scraper.proxyPort > 0) {
+                builder.proxy(ProxySelector.of(InetSocketAddress(host, props.scraper.proxyPort)))
+            }
+            val created = builder.build()
+            cachedClient = created
+            cachedProxyKey = key
+            return created
         }
-        builder.build()
     }
 
     private val lock = ReentrantReadWriteLock()
@@ -43,9 +58,10 @@ class HttpClientFactory(private val props: AppProperties) {
                 .header("User-Agent", props.scraper.userAgent)
                 .header("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
                 .header("Accept-Language", "zh-CN,zh;q=0.9,en;q=0.8")
-            referer?.let { builder.header("Referer", it) }
+            // 未显式指定 Referer 时按 URL 源站点推导（JavBus/JavDB 图片有 Referer 防盗链）
+            builder.header("Referer", referer ?: originOf(url))
             cookie?.takeIf { it.isNotBlank() }?.let { builder.header("Cookie", it) }
-            val resp = client.send(builder.GET().build(), HttpResponse.BodyHandlers.ofString())
+            val resp = client().send(builder.GET().build(), HttpResponse.BodyHandlers.ofString())
             if (resp.statusCode() != 200) throw ScrapeException("HTTP ${resp.statusCode()} for $url")
             return resp.body()
         } finally {
@@ -53,19 +69,30 @@ class HttpClientFactory(private val props: AppProperties) {
         }
     }
 
-    fun download(url: String, referer: String? = null): ByteArray {
+    fun download(url: String, referer: String? = null): ByteArray = downloadDetailed(url, referer).bytes
+
+    /** 下载二进制资源（图片），返回内容与 Content-Type */
+    fun downloadDetailed(url: String, referer: String? = null): Downloaded {
         throttle()
         try {
             val builder = HttpRequest.newBuilder(URI.create(url))
                 .timeout(Duration.ofMillis(props.scraper.timeoutMs))
                 .header("User-Agent", props.scraper.userAgent)
-            referer?.let { builder.header("Referer", it) }
-            val resp = client.send(builder.GET().build(), HttpResponse.BodyHandlers.ofByteArray())
+            builder.header("Referer", referer ?: originOf(url))
+            val resp = client().send(builder.GET().build(), HttpResponse.BodyHandlers.ofByteArray())
             if (resp.statusCode() != 200) throw ScrapeException("HTTP ${resp.statusCode()} for image $url")
-            return resp.body()
+            return Downloaded(resp.body(), resp.headers().firstValue("content-type").orElse(null))
         } finally {
             release()
         }
+    }
+
+    data class Downloaded(val bytes: ByteArray, val contentType: String?)
+
+    /** 从 URL 推导源站点 Referer：scheme://host/ */
+    private fun originOf(url: String): String {
+        val uri = URI.create(url)
+        return "${uri.scheme}://${uri.host}/"
     }
 
     /** 全局并发限制 + 请求最小间隔 */

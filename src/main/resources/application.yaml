@@ -8,7 +8,7 @@ spring:
     username: ${SINJAV_DB_USER:}
     password: ${SINJAV_DB_PASSWORD:}
     hikari:
-      maximum-pool-size: 1   # SQLite 单写者，限制连接池；PostgreSQL 部署时建议调大
+      maximum-pool-size: 10   # SQLite 单写者，限制连接池；PostgreSQL 部署时建议调大
       data-source-properties:
         # 兼容 SQLite CURRENT_TIMESTAMP 的文本时间格式（PostgreSQL 驱动会忽略该属性）
         date_string_format: "yyyy-MM-dd HH:mm:ss"
@@ -48,6 +48,9 @@ sinjav:
   async:
     job-pool-size: 2
     job-pool-queue-capacity: 100
+  images:
+    download: true             # 刮削成功后下载封面/剧照到本地
+    dir: ./data/images         # 本地图片目录，Web 端通过 /local-images/{番号}/poster.jpg 访问
 
 logging:
   level:

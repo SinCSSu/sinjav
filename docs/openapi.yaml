@@ -291,6 +291,34 @@ paths:
         '404':
           $ref: '#/components/responses/NotFound'
 
+  /api/v1/images:
+    get:
+      tags: [movies]
+      operationId: proxyImage
+      summary: 图片代理
+      description: |
+        转发源站（JavBus/JavDB 及其图床）图片。源站图片有 Referer 防盗链，浏览器无法直接加载，
+        由后端携带正确 Referer 拉取后返回。仅允许白名单域名，防止 SSRF。
+      parameters:
+        - name: url
+          in: query
+          required: true
+          description: 源站图片绝对地址
+          schema:
+            type: string
+      responses:
+        '200':
+          description: 图片内容
+          content:
+            image/*:
+              schema:
+                type: string
+                format: binary
+        '400':
+          description: URL 非法或域名不在白名单
+        '502':
+          description: 源站拉取失败
+
   /api/v1/settings:
     get:
       tags: [settings]

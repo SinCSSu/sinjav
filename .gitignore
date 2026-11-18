@@ -39,3 +39,5 @@ out/
 ### Kotlin ###
 .kotlin
 /.codebuddy/
+/data/
+/javtest/
