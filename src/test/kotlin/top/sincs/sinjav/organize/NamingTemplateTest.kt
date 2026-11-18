@@ -27,6 +27,12 @@ class NamingTemplateTest {
     }
 
     @Test
+    fun `标题优先使用原始标题`() {
+        val m = movie().copy(titleOrig = "Original: Title/2?", title = "中文标题")
+        assertEquals("ABP-123/ABP-123 - Original_ Title/2_", t.render("{number}/{number} - {title}", m))
+    }
+
+    @Test
     fun `date maker series actress 占位符`() {
         val out = t.render("{date}/{maker}-{series}-{actress}", movie(), listOf("Sora"))
         assertEquals("2024-05-01/Studio-Series-Sora", out)

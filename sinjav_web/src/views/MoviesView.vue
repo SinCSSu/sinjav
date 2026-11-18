@@ -51,6 +51,15 @@
           >
             {{ movieStatusLabels[m.status] }}
           </el-tag>
+          <el-button
+            class="delete-btn"
+            :icon="DeleteIcon"
+            circle
+            size="small"
+            type="danger"
+            title="删除记录"
+            @click.stop="removeMovie(m)"
+          />
         </div>
         <div class="info">
           <div class="number">{{ m.number }}</div>
@@ -59,6 +68,7 @@
             <span class="ellipsis">{{ m.actresses.join(' / ') }}</span>
             <span v-if="m.releaseDate">{{ m.releaseDate }}</span>
           </div>
+          <div v-if="m.plot" class="plot" :title="m.plot">{{ m.plot }}</div>
         </div>
       </div>
     </div>
@@ -80,7 +90,8 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
-import { Search as SearchIcon, SortDown as SortDownIcon, SortUp as SortUpIcon } from '@element-plus/icons-vue'
+import { Delete as DeleteIcon, Search as SearchIcon, SortDown as SortDownIcon, SortUp as SortUpIcon } from '@element-plus/icons-vue'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { api, imgFallback, imgProxy, localImg } from '../api'
 import type { MovieSort, MovieStatus, MovieSummary } from '../api/types'
 import { movieStatusLabels, movieStatusTagTypes } from '../utils'
@@ -134,6 +145,25 @@ function openDetail(number: string) {
   detailVisible.value = true
 }
 
+async function removeMovie(m: MovieSummary) {
+  try {
+    await ElMessageBox.confirm(
+      `确定删除 ${m.number} 的记录？将删除影片记录、关联的文件记录与本地刮削图片缓存；不删除任何视频文件。`,
+      '删除记录',
+      { type: 'warning', confirmButtonText: '删除', cancelButtonText: '取消', confirmButtonClass: 'el-button--danger' },
+    )
+  } catch {
+    return
+  }
+  try {
+    await api.deleteMovie(m.number)
+    ElMessage.success(`已删除 ${m.number}`)
+    load()
+  } catch (e) {
+    ElMessage.error(e instanceof Error ? e.message : String(e))
+  }
+}
+
 onMounted(load)
 </script>
 
@@ -184,6 +214,16 @@ onMounted(load)
   top: 8px;
   left: 8px;
 }
+.delete-btn {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+.movie-card:hover .delete-btn {
+  opacity: 1;
+}
 .info {
   padding: 8px 10px 10px;
 }
@@ -213,5 +253,17 @@ onMounted(load)
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+.plot {
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+  line-height: 1.6;
+  white-space: pre-line;
+  word-break: break-all;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 </style>

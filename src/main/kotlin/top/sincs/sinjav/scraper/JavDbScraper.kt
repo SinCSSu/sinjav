@@ -26,6 +26,8 @@ class JavDbScraper(
     private val selTags = "div.current-tag-cloud a"
     private val selActresses = "div.container.panel-block a.avatar-box span.name"
     private val selPreviews = "div.screenshot-panel a.tile-item"
+    // 简介：<div class="video-description">（可能带「展开」按钮文字，截取前 2000 字符兜底）
+    private val selPlot = "div.video-description"
 
     override fun scrape(number: String): MovieMetadata {
         val base = props.scraper.baseUrlJavdb.trimEnd('/')
@@ -68,6 +70,7 @@ class JavDbScraper(
             durationMin = durationMin,
             coverUrl = coverUrl,
             previewUrls = previews,
+            plot = doc.selectFirst(selPlot)?.text()?.trim()?.take(2000)?.ifBlank { null },
             actresses = actresses,
             genres = doc.select(selTags).map { it.text().trim() }.filter { it.isNotBlank() },
         )

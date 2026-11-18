@@ -31,7 +31,7 @@
       </el-form-item>
       <template v-if="doOrganize">
         <el-form-item label="目标目录">
-          <el-input v-model="targetDir" placeholder="留空使用全局配置" />
+          <DirTreeInput v-model="targetDir" />
         </el-form-item>
         <el-form-item label="整理方式">
           <el-select v-model="mode" clearable placeholder="留空使用全局配置" style="width: 100%">
@@ -55,6 +55,7 @@ import { ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { api } from '../api'
 import type { LinkMode, ScraperStrategy } from '../api/types'
+import DirTreeInput from './DirTreeInput.vue'
 
 const visible = defineModel<boolean>({ default: false })
 const emit = defineEmits<{ created: [] }>()

@@ -36,4 +36,15 @@ class ImageStore(
 
     /** 本地图片相对 Web 路径（/local-images/{番号}/文件名），不存在时由前端回退到代理 */
     fun localUrl(number: String, file: String): String = "/local-images/$number/$file"
+
+    /** 删除该番号的本地图片缓存目录（删除影片记录时调用，仅影响缓存，不涉及视频文件） */
+    fun delete(number: String) {
+        val dir = Path.of(props.images.dir).resolve(number)
+        runCatching {
+            if (Files.exists(dir)) {
+                Files.list(dir).use { files -> files.forEach { Files.deleteIfExists(it) } }
+                Files.deleteIfExists(dir)
+            }
+        }.onFailure { log.warn("删除本地图片目录失败 {}: {}", dir, it.message) }
+    }
 }

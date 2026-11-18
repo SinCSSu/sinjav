@@ -24,6 +24,7 @@ data class Movie(
     val rawNumber: String?,
     val title: String?,
     val titleZh: String?,
+    val titleOrig: String? = null, // 原始标题（标题已翻译为中文时保留）
     val releaseDate: LocalDate?,
     val director: String?,
     val maker: String?,

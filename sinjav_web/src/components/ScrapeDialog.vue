@@ -75,6 +75,10 @@
               </div>
             </div>
           </div>
+          <div v-if="selected.plot" class="plot">
+            <span class="k">简介</span>
+            <p class="plot-text">{{ selected.plot }}</p>
+          </div>
         </template>
       </div>
     </div>
@@ -320,6 +324,26 @@ function statusTagType(s: MovieStatus): 'warning' | 'danger' | 'success' {
 .detail-row .k {
   font-size: 12px;
   color: var(--el-text-color-secondary);
+}
+.plot {
+  margin-top: 4px;
+  border-top: 1px solid var(--glass-border-soft);
+  padding-top: 10px;
+  overflow: auto;
+  flex: 1;
+  min-height: 0;
+}
+.plot .k {
+  display: block;
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+}
+.plot-text {
+  margin: 6px 0 0;
+  font-size: 13px;
+  line-height: 1.7;
+  white-space: pre-line;
+  word-break: break-all;
 }
 .dialog-footer {
   display: flex;

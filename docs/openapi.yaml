@@ -251,6 +251,75 @@ paths:
               schema:
                 $ref: '#/components/schemas/Problem'
 
+  /api/v1/organize/preview:
+    post:
+      tags: [organize]
+      operationId: previewOrganize
+      summary: 整理预览（同步）
+      description: |
+        按给定参数（省略时使用全局配置）为每条文件记录计算完整目标路径，
+        不执行、不写库。已整理记录返回 reorganize=true 及原整理结果信息。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OrganizePreviewRequest'
+      responses:
+        '200':
+          description: 预览结果
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrganizePreviewResponse'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+
+  /api/v1/organize/records:
+    get:
+      tags: [organize]
+      operationId: listOrganizeRecords
+      summary: 整理弹窗文件记录列表
+      description: 按整理状态分组（pending/organized）返回文件记录，联出影片标题与封面
+      parameters:
+        - name: group
+          in: query
+          required: true
+          schema:
+            type: string
+            enum: [pending, organized]
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: size
+          in: query
+          schema:
+            type: integer
+            default: 100
+        - name: keyword
+          in: query
+          schema:
+            type: string
+          description: 模糊匹配番号/文件名/影片标题
+      responses:
+        '200':
+          description: 分页列表
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/PageMeta'
+                  - type: object
+                    properties:
+                      items:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/OrganizeRecordDto'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+
   /api/v1/pipeline:
     post:
       tags: [scan]
@@ -340,6 +409,20 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/MovieDetail'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      tags: [movies]
+      operationId: deleteMovie
+      summary: 删除影片记录
+      description: |
+        删除影片记录及其关联（女优/类型关联）、该番号的全部文件记录、本地刮削图片缓存目录。
+        不删除任何视频文件（含已整理的输出）。
+      parameters:
+        - $ref: '#/components/parameters/NumberPath'
+      responses:
+        '204':
+          description: 删除成功
         '404':
           $ref: '#/components/responses/NotFound'
 
@@ -718,7 +801,149 @@ components:
           items:
             type: string
           description: 仅整理指定番号；省略时整理所有「已刮削且待整理」的文件
+        items:
+          type: array
+          description: |
+            按文件记录逐条整理（优先于 numbers）。条目可覆盖目标路径与整理方式；
+            记录已是 organized 状态时视为重整（先清理原整理结果）。
+          items:
+            $ref: '#/components/schemas/OrganizeItemRequest'
       required: []
+
+    OrganizeItemRequest:
+      type: object
+      description: 逐条整理条目（以文件记录为单位）
+      properties:
+        recordId:
+          type: integer
+          format: int64
+          description: 文件记录 id
+        targetPath:
+          type: string
+          description: 完整目标路径（目录+文件名）；省略时按命名模板渲染。未带扩展名时自动补源文件扩展名
+        mode:
+          type: string
+          enum: [hardlink, symlink, move, copy]
+          description: 整理方式覆盖；省略时使用请求级 mode / 全局配置。原整理为移动的记录重整时不能使用链接模式
+      required: [recordId]
+
+    OrganizePreviewRequest:
+      type: object
+      description: 整理预览请求（同步计算目标路径，不执行）
+      properties:
+        recordIds:
+          type: array
+          items:
+            type: integer
+            format: int64
+          description: 要预览的文件记录 id 列表
+        targetDir:
+          type: string
+          description: 目标目录绝对路径（省略时使用全局配置）
+        mode:
+          type: string
+          enum: [hardlink, symlink, move, copy]
+          description: 整理方式（省略时使用全局配置）
+        namingTemplate:
+          type: string
+          description: 命名模板（省略时使用全局配置）
+        conflictPolicy:
+          type: string
+          enum: [skip, overwrite, rename]
+          description: 冲突策略（省略时使用全局配置）
+      required: [recordIds]
+
+    OrganizePreviewItem:
+      type: object
+      description: 单条文件记录的整理预览
+      properties:
+        recordId:
+          type: integer
+          format: int64
+        sourcePath:
+          type: string
+        fileName:
+          type: string
+        number:
+          type: string
+          nullable: true
+        title:
+          type: string
+          nullable: true
+          description: 影片标题（无元数据时为 null）
+        coverUrl:
+          type: string
+          nullable: true
+          description: 封面图地址（无元数据时为 null）
+        targetPath:
+          type: string
+          nullable: true
+          description: 计算出的完整目标路径；计算失败时为 null（看 error）
+        mode:
+          type: string
+          nullable: true
+        conflictPolicy:
+          type: string
+          nullable: true
+        reorganize:
+          type: boolean
+          description: 该记录已整理，执行时将先清理原结果再整理
+        currentTargetPath:
+          type: string
+          nullable: true
+          description: 已整理记录的当前目标路径
+        currentLinkMode:
+          type: string
+          nullable: true
+          description: 已整理记录的原整理方式（move 时重整不能用链接模式）
+        error:
+          type: string
+          nullable: true
+          description: 预览失败原因（无元数据/未刮削/路径计算失败等）
+      required: [recordId, sourcePath, fileName, reorganize]
+
+    OrganizePreviewResponse:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/OrganizePreviewItem'
+      required: [items]
+
+    OrganizeRecordDto:
+      type: object
+      description: 整理弹窗列表行（文件记录 + 影片标题/封面）
+      properties:
+        recordId:
+          type: integer
+          format: int64
+        sourcePath:
+          type: string
+        fileName:
+          type: string
+        fileSize:
+          type: integer
+          format: int64
+        number:
+          type: string
+          nullable: true
+        title:
+          type: string
+          nullable: true
+        coverUrl:
+          type: string
+          nullable: true
+        organizeStatus:
+          $ref: '#/components/schemas/OrganizeStatus'
+        targetPath:
+          type: string
+          nullable: true
+        linkMode:
+          type: string
+          nullable: true
+          enum: [hardlink, symlink, move, copy, null]
+      required: [recordId, sourcePath, fileName, fileSize, organizeStatus]
 
     SettingsUpdate:
       type: object
@@ -867,6 +1092,10 @@ components:
           nullable: true
         status:
           $ref: '#/components/schemas/MovieStatus'
+        plot:
+          type: string
+          nullable: true
+          description: 简介（中文简介在前，另起一段为原简介）
       required: [number, status]
 
     Movie:
@@ -881,6 +1110,10 @@ components:
             titleZh:
               type: string
               nullable: true
+            titleOrig:
+              type: string
+              nullable: true
+              description: 原始标题（标题已翻译为中文时保留）
             director:
               type: string
               nullable: true
@@ -1033,6 +1266,15 @@ components:
           type: boolean
         downloadImages:
           type: boolean
+        deeplApiKey:
+          type: string
+          description: DeepL API key（免费 key 以 :fx 结尾）；配置后翻译优先使用 DeepL
+        baiduTranslateAppId:
+          type: string
+          description: 百度翻译 APP ID（未配置 DeepL 时使用）
+        baiduTranslateSecret:
+          type: string
+          description: 百度翻译密钥
 
     # ---------- 通用 ----------
     PageMeta:

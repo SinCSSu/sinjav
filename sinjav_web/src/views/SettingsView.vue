@@ -44,6 +44,35 @@
           <el-form-item label="并发数">
             <el-input-number v-model="form.concurrency" :min="1" :max="32" />
           </el-form-item>
+          <el-divider content-position="left">翻译设置（DeepL &gt; 百度 &gt; Google 兜底）</el-divider>
+          <el-form-item label="DeepL API Key">
+            <el-input
+              v-model="form.deeplApiKey"
+              placeholder="配置后翻译优先使用 DeepL；免费 key 以 :fx 结尾"
+              style="max-width: 500px"
+              show-password
+            />
+          </el-form-item>
+          <el-form-item label="百度 APP ID">
+            <el-input
+              v-model="form.baiduTranslateAppId"
+              placeholder="百度翻译开放平台 APP ID；未配置 DeepL 时使用"
+              style="max-width: 500px"
+            />
+          </el-form-item>
+          <el-form-item label="百度密钥">
+            <el-input
+              v-model="form.baiduTranslateSecret"
+              placeholder="百度翻译开放平台密钥"
+              style="max-width: 500px"
+              show-password
+            />
+          </el-form-item>
+          <el-form-item>
+            <span class="hint">
+              未配置任何 API 时使用 Google 免费接口（国内网络需在上方配置代理）；翻译失败的条目保留原文
+            </span>
+          </el-form-item>
         </el-form>
       </el-card>
 

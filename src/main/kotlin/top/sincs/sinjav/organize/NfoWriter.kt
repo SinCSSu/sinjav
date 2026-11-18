@@ -17,7 +17,8 @@ class NfoWriter {
             appendLine("<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>")
             appendLine("<movie>")
             tag("title", movie.title ?: movie.number)
-            tag("originaltitle", movie.title)
+            // 标题已翻译为中文时，originaltitle 写入保留的原始标题
+            tag("originaltitle", movie.titleOrig ?: movie.title)
             tag("plot", movie.plot)
             tag("premiered", movie.releaseDate?.toString())
             tag("releasedate", movie.releaseDate?.toString())

@@ -322,6 +322,15 @@ body::after {
   margin-bottom: 16px;
 }
 
+/* 按钮内图标与文字之间留出间距 */
+.el-button {
+  gap: 10px;
+}
+/* Element Plus 会把插槽内容包进一个 inline-flex 的 span，图标+文字在这个 span 内部 */
+.el-button > span {
+  gap: 10px;
+}
+
 .pager {
   display: flex;
   justify-content: flex-end;

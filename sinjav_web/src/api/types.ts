@@ -29,11 +29,13 @@ export interface MovieSummary {
   actresses: string[]
   coverUrl?: string | null
   status: MovieStatus
+  plot?: string | null
 }
 
 export interface Movie extends MovieSummary {
   rawNumber?: string | null
   titleZh?: string | null
+  titleOrig?: string | null
   director?: string | null
   label?: string | null
   series?: string | null
@@ -154,6 +156,14 @@ export interface ScrapeRequest {
   strategy?: ScraperStrategy
 }
 
+export interface OrganizeItemRequest {
+  recordId: number
+  /** 完整目标路径（目录+文件名）；省略时按命名模板渲染 */
+  targetPath?: string
+  /** 整理方式覆盖；省略时使用请求级 mode / 全局配置 */
+  mode?: LinkMode
+}
+
 export interface OrganizeRequest {
   targetDir?: string
   mode?: LinkMode
@@ -162,6 +172,51 @@ export interface OrganizeRequest {
   generateNfo?: boolean
   downloadImages?: boolean
   numbers?: string[]
+  /** 按文件记录逐条整理（可覆盖目标路径/方式），优先于 numbers；organized 记录视为重整 */
+  items?: OrganizeItemRequest[]
+}
+
+// ---------- 整理弹窗 ----------
+
+export interface OrganizeRecordItem {
+  recordId: number
+  sourcePath: string
+  fileName: string
+  fileSize: number
+  number?: string | null
+  title?: string | null
+  coverUrl?: string | null
+  organizeStatus: OrganizeStatus
+  targetPath?: string | null
+  linkMode?: LinkMode | null
+}
+
+export interface OrganizePreviewRequest {
+  recordIds: number[]
+  targetDir?: string
+  mode?: LinkMode
+  namingTemplate?: string
+  conflictPolicy?: ConflictPolicy
+}
+
+export interface OrganizePreviewItem {
+  recordId: number
+  sourcePath: string
+  fileName: string
+  number?: string | null
+  title?: string | null
+  coverUrl?: string | null
+  targetPath?: string | null
+  mode?: LinkMode | null
+  conflictPolicy?: ConflictPolicy | null
+  reorganize: boolean
+  currentTargetPath?: string | null
+  currentLinkMode?: LinkMode | null
+  error?: string | null
+}
+
+export interface OrganizePreviewResponse {
+  items: OrganizePreviewItem[]
 }
 
 export interface PipelineRequest {
@@ -185,6 +240,10 @@ export type SettingsUpdate = {
   conflictPolicy?: ConflictPolicy
   generateNfo?: boolean
   downloadImages?: boolean
+  /** 翻译 API：DeepL > 百度 > Google 兜底 */
+  deeplApiKey?: string
+  baiduTranslateAppId?: string
+  baiduTranslateSecret?: string
   /** 只读：扫描全局配置（GET 返回，PUT 忽略），供扫描弹窗高级选项回填 */
   videoExtensions?: string
   minFileSizeMb?: number

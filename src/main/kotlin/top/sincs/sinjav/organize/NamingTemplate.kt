@@ -6,6 +6,7 @@ import top.sincs.sinjav.domain.Movie
 /**
  * 命名模板引擎：{number} {title} {date} {maker} {series} {actress}
  * 自动清洗文件名/路径非法字符（Windows 保留字符与保留名）。
+ * {title} 使用原始标题（标题已翻译为中文时用 title_orig），保存路径不使用译名。
  */
 @Component
 class NamingTemplate {
@@ -16,7 +17,7 @@ class NamingTemplate {
         val date = movie.releaseDate?.toString() ?: ""
         val out = template
             .replace("{number}", movie.number)
-            .replace("{title}", movie.title ?: movie.number)
+            .replace("{title}", movie.titleOrig ?: movie.title ?: movie.number)
             .replace("{date}", date)
             .replace("{maker}", movie.maker ?: "")
             .replace("{series}", movie.series ?: "")

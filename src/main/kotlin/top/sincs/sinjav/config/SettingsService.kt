@@ -39,6 +39,9 @@ class SettingsService(
             u.conflictPolicy?.let { add("conflictPolicy" to it) }
             u.generateNfo?.let { add("generateNfo" to it.toString()) }
             u.downloadImages?.let { add("downloadImages" to it.toString()) }
+            u.deeplApiKey?.let { add("deeplApiKey" to it) }
+            u.baiduTranslateAppId?.let { add("baiduTranslateAppId" to it) }
+            u.baiduTranslateSecret?.let { add("baiduTranslateSecret" to it) }
         }
         changes.forEach { (k, v) ->
             jdbc.update(
@@ -68,6 +71,9 @@ class SettingsService(
             "conflictPolicy" -> props.organize.conflictPolicy = value
             "generateNfo" -> props.organize.generateNfo = value.toBooleanStrictOrNull() ?: true
             "downloadImages" -> props.organize.downloadImages = value.toBooleanStrictOrNull() ?: true
+            "deeplApiKey" -> props.scraper.deeplApiKey = value
+            "baiduTranslateAppId" -> props.scraper.baiduTranslateAppId = value
+            "baiduTranslateSecret" -> props.scraper.baiduTranslateSecret = value
         }
     }
 }

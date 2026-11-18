@@ -35,6 +35,8 @@ JAV 影片自动整理 + 元数据刮削器后端（参考 Solr159/JavBoss 的�
 - `SettingsService` 启动即查库 → 需要 `@DependsOnDatabaseInitialization`（否则 Flyway 之前跑，报 no such table）
 - `@Async` 自调用失效 → 异步执行体拆到独立 `JobRunner`（`open fun` + `@Async("jobExecutor")`）
 - 整理命名模板语义：渲染结果的**除最后一段外是子目录，最后一段是目标文件基名**（扩展名沿用源文件）
+- 整理重整语义（前端三列整理弹窗）：已 organized 记录再整理 = 重整。链接/复制类删除旧目标文件及同目录 movie.nfo/poster/fanart/preview*.jpg（目录空则移除）；move 类不删文件，把 source_path 重置为旧 target_path 后重新整理，且重整不能用链接模式（源文件已不在源位置）。逐条覆盖走 OrganizeRequest.items（recordId + 可选 targetPath/mode）；预览走 POST /organize/preview（同步、只算路径不执行）
+- 刮削翻译：ScrapeService 落库前经 TranslationService 翻译——标题译中文存 title（原标题存 title_orig 列，V2 迁移；NFO originaltitle 用原标题）；简介存「中文简介\n\n原简介」。翻译源优先级 DeepL(deepl-api-key) > 百度(baidu-translate-app-id/secret) > Google 免费接口兜底，设置页可配，失败回退原文不阻断刮削。**整理路径 {title} 占位符用 title_orig（无则回退 title），保存路径不使用译名**
 - 测试：SQLite 库文件放 `build/` 下（`@TempDir` 会在连接池关闭前删除文件而失败）；集成测试 `SinJavApplicationTests` 走通扫描→识别→复制整理→NFO 全链路（刮削依赖外网，测试里用 JDBC 直写模拟刮削结果）
 
 ## 4. 代码结构（top.sincs.sinjav 包）
@@ -65,13 +67,13 @@ src/main/kotlin/top/sincs/sinjav/
 │   ├── LinkStrategy.kt           # HardLink/SymLink/Move/Copy（跨分区/权限报错不降级）
 │   ├── NamingTemplate.kt         # 占位符 {number}{title}{date}{maker}{series}{actress} + 非法字符清洗
 │   ├── NfoWriter.kt              # Kodi/Jellyfin/Emby 兼容 movie.nfo
-│   └── Organizer.kt              # 建目录→链接/移动→写nfo→下图片→更新 file_records
+│   └── Organizer.kt              # 建目录→链接/移动→写nfo→下图片→更新 file_records；含预览(preview)与逐条整理(executeItem，支持重整已整理记录)
 ├── job/
 │   ├── JobService.kt             # 创建任务+分发（同类型互斥），params JSON 序列化
 │   └── JobRunner.kt              # @Async 执行体：runScan/runScrape/runOrganize/runPipeline
 └── api/
-    ├── TriggerControllers.kt     # POST /scans /scrape /organize /pipeline → 202 JobAccepted
-    ├── QueryControllers.kt       # GET /movies /movies/{number} /file-records /jobs /jobs/{id}
+    ├── TriggerControllers.kt     # POST /scans /scans/preview /scans/commit /scrape /organize /organize/preview /pipeline → 202 JobAccepted
+    ├── QueryControllers.kt       # GET /movies /movies/{number} /file-records /organize/records /jobs /jobs/{id}；DELETE /movies/{number}（删记录+关联+图片缓存，不动视频）
     ├── SettingsController.kt     # GET/PUT /settings
     └── dto/ApiDtos.kt / PageDto.kt
 ```

@@ -48,6 +48,23 @@ class JobRunner(
     }
 
     private fun executeOrganize(jobId: Long, params: OrganizeParams) {
+        if (!params.items.isNullOrEmpty()) {
+            // 按文件记录逐条整理（支持覆盖目标路径/整理方式与已整理记录重整）
+            jobs.setTotalItems(jobId, params.items.size)
+            var done = 0
+            var failed = 0
+            params.items.forEach { item ->
+                val result = organizer.executeItem(item, params)
+                if (!result.ok && !result.skipped) {
+                    failed++
+                    jobs.appendError(jobId, "记录#${item.recordId}", result.message ?: "unknown")
+                }
+                done++
+                jobs.updateProgress(jobId, done, failed)
+            }
+            log.info("整理完成 jobId={} 共 {} 条记录，失败 {}", jobId, params.items.size, failed)
+            return
+        }
         val records = if (!params.numbers.isNullOrEmpty()) {
             params.numbers.flatMap { fileRecords.findByNumber(it) }
         } else {

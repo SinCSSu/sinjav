@@ -44,6 +44,26 @@ data class OrganizeRequest(
     val generateNfo: Boolean? = null,
     val downloadImages: Boolean? = null,
     val numbers: List<String>? = null,
+    /** 按文件记录逐条整理（可覆盖目标路径/整理方式），优先于 numbers */
+    val items: List<OrganizeItemRequest>? = null,
+)
+
+data class OrganizeItemRequest(
+    @field:jakarta.validation.constraints.NotNull(message = "recordId 不能为空")
+    val recordId: Long,
+    /** 完整目标路径（目录+文件名）；省略时按命名模板渲染 */
+    val targetPath: String? = null,
+    /** 整理方式覆盖；省略时使用请求级 mode / 全局配置 */
+    val mode: String? = null,
+)
+
+data class OrganizePreviewRequest(
+    @field:jakarta.validation.constraints.NotEmpty(message = "recordIds 不能为空")
+    val recordIds: List<Long>,
+    val targetDir: String? = null,
+    val mode: String? = null,
+    val namingTemplate: String? = null,
+    val conflictPolicy: String? = null,
 )
 
 data class PipelineRequest(
@@ -67,6 +87,10 @@ data class SettingsUpdate(
     val conflictPolicy: String? = null,
     val generateNfo: Boolean? = null,
     val downloadImages: Boolean? = null,
+    // 翻译 API（DeepL > 百度 > Google 兜底）
+    val deeplApiKey: String? = null,
+    val baiduTranslateAppId: String? = null,
+    val baiduTranslateSecret: String? = null,
 )
 
 // ---------- 响应 ----------
@@ -116,17 +140,19 @@ data class PageMeta(val page: Int, val size: Int, val total: Long, val totalPage
 data class MovieSummaryDto(
     val number: String, val title: String?, val releaseDate: String?, val maker: String?,
     val actresses: List<String>, val coverUrl: String?, val status: String,
+    val plot: String? = null,
 ) {
     companion object {
         fun of(m: Movie, actresses: List<String>) = MovieSummaryDto(
             number = m.number, title = m.title, releaseDate = m.releaseDate?.toString(),
             maker = m.maker, actresses = actresses, coverUrl = m.coverUrl, status = m.status,
+            plot = m.plot,
         )
     }
 }
 
 data class MovieDetailDto(
-    val number: String, val title: String?, val titleZh: String?, val rawNumber: String?,
+    val number: String, val title: String?, val titleZh: String?, val titleOrig: String?, val rawNumber: String?,
     val releaseDate: String?, val director: String?, val maker: String?, val label: String?,
     val series: String?, val durationMin: Int?, val coverUrl: String?, val previewUrls: List<String>,
     val plot: String?, val source: String?, val status: String, val failReason: String?,
@@ -151,11 +177,19 @@ data class FileRecordDto(
     }
 }
 
+/** 整理弹窗列表行（文件记录 + 影片标题/封面） */
+data class OrganizeRecordDto(
+    val recordId: Long, val sourcePath: String, val fileName: String, val fileSize: Long,
+    val number: String?, val title: String?, val coverUrl: String?,
+    val organizeStatus: String, val targetPath: String?, val linkMode: String?,
+)
+
 data class SettingsDto(
     val sourceOrder: String, val strategy: String, val userAgent: String, val javdbCookie: String,
     val proxyHost: String, val proxyPort: Int, val requestIntervalMs: Long, val concurrency: Int,
     val targetDir: String, val mode: String, val namingTemplate: String, val conflictPolicy: String,
     val generateNfo: Boolean, val downloadImages: Boolean,
+    val deeplApiKey: String, val baiduTranslateAppId: String, val baiduTranslateSecret: String,
     val videoExtensions: String, val minFileSizeMb: Long,
 ) {
     companion object {
@@ -167,6 +201,9 @@ data class SettingsDto(
             targetDir = props.organize.targetDir, mode = props.organize.mode,
             namingTemplate = props.organize.namingTemplate, conflictPolicy = props.organize.conflictPolicy,
             generateNfo = props.organize.generateNfo, downloadImages = props.organize.downloadImages,
+            deeplApiKey = props.scraper.deeplApiKey,
+            baiduTranslateAppId = props.scraper.baiduTranslateAppId,
+            baiduTranslateSecret = props.scraper.baiduTranslateSecret,
             videoExtensions = props.scan.videoExtensions, minFileSizeMb = props.scan.minFileSizeMb,
         )
     }

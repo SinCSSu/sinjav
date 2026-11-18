@@ -15,6 +15,10 @@ data class ScraperProps(
     var maxRetriesPerItem: Int = 1,
     var baseUrlJavbus: String = "https://www.javbus.com",
     var baseUrlJavdb: String = "https://javdb.com",
+    // 翻译 API：DeepL > 百度 > Google 免费接口（未配置 key 时兜底）
+    var deeplApiKey: String = "",
+    var baiduTranslateAppId: String = "",
+    var baiduTranslateSecret: String = "",
 )
 
 data class OrganizeProps(

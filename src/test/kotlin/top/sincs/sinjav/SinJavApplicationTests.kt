@@ -202,6 +202,140 @@ class SinJavApplicationTests {
         jdbc.update("DELETE FROM movies WHERE number = 'MIDV-999'", emptyMap<String, Any>())
     }
 
+    @Test
+    fun `整理预览与重整`(@TempDir sourceDir: Path, @TempDir targetDir: Path, @TempDir targetDir2: Path) {
+        val video = sourceDir.resolve("ABP-777.mp4")
+        java.io.RandomAccessFile(video.toFile(), "rw").use { it.setLength(51L * 1024 * 1024) }
+        val headers = org.springframework.http.HttpHeaders().apply { contentType = org.springframework.http.MediaType.APPLICATION_JSON }
+
+        // 扫描识别
+        val scanResp = rest.postForEntity(
+            "/api/v1/scans",
+            org.springframework.http.HttpEntity(mapOf("sourceDirs" to listOf(sourceDir.toString())), headers),
+            Map::class.java,
+        )
+        assertEquals(HttpStatus.ACCEPTED, scanResp.statusCode)
+        awaitJob((scanResp.body?.get("jobId") as Number).toLong())
+        val record = (rest.getForEntity("/api/v1/file-records?number=ABP-777", Map::class.java).body!!["items"]
+            as List<Map<*, *>>).first()
+        val recordId = (record["id"] as Number).toLong()
+        insertFakeScrape("ABP-777")
+
+        // 整理弹窗列表接口（pending）
+        val pendingList = rest.getForEntity("/api/v1/organize/records?group=pending&keyword=ABP-777", Map::class.java).body!!
+        assertEquals(1L, (pendingList["total"] as Number).toLong())
+        assertEquals("Fake Title", (pendingList["items"] as List<Map<*, *>>).first()["title"])
+
+        // 复制整理
+        val orgResp = rest.postForEntity(
+            "/api/v1/organize",
+            org.springframework.http.HttpEntity(
+                mapOf("mode" to "copy", "targetDir" to targetDir.toString(), "namingTemplate" to "{number}/{number} - {title}"),
+                headers,
+            ),
+            Map::class.java,
+        )
+        val orgJob = awaitJob((orgResp.body?.get("jobId") as Number).toLong())
+        assertEquals("completed", orgJob["status"])
+
+        // 已整理分组出现该记录（带标题与原目标路径）
+        val organizedList = rest.getForEntity("/api/v1/organize/records?group=organized&keyword=ABP-777", Map::class.java).body!!
+        assertEquals(1L, (organizedList["total"] as Number).toLong())
+        val row = (organizedList["items"] as List<Map<*, *>>).first()
+        assertEquals("organized", row["organizeStatus"])
+        assertEquals("copy", row["linkMode"])
+        assertNotNull(row["targetPath"])
+
+        // 预览：已整理记录标记重整，并按参数计算出新目标路径
+        val preview = rest.postForEntity(
+            "/api/v1/organize/preview",
+            org.springframework.http.HttpEntity(
+                mapOf("recordIds" to listOf(recordId), "targetDir" to targetDir2.toString(), "namingTemplate" to "{number}/{number} - {title}"),
+                headers,
+            ),
+            Map::class.java,
+        )
+        assertEquals(HttpStatus.OK, preview.statusCode, "preview 响应: ${preview.body}")
+        val item = (preview.body?.get("items") as List<Map<*, *>>).first()
+        assertEquals(true, item["reorganize"])
+        assertEquals("copy", item["currentLinkMode"])
+        assertNotNull(item["targetPath"])
+
+        // 重整：覆盖目标路径，旧整理结果应被删除
+        val override = targetDir2.resolve("custom").resolve("renamed.mp4").toString()
+        val reorgResp = rest.postForEntity(
+            "/api/v1/organize",
+            org.springframework.http.HttpEntity(
+                mapOf("mode" to "copy", "items" to listOf(mapOf("recordId" to recordId, "targetPath" to override))),
+                headers,
+            ),
+            Map::class.java,
+        )
+        assertEquals(HttpStatus.ACCEPTED, reorgResp.statusCode)
+        val reorgJob = awaitJob((reorgResp.body?.get("jobId") as Number).toLong())
+        assertEquals("completed", reorgJob["status"], "reorg job: ${reorgJob["errors"]}")
+        assertEquals(0, (reorgJob["failItems"] as Number).toInt())
+
+        // 新目标存在且生成 nfo；旧整理目录整体清理
+        assertTrue(Files.exists(Path.of(override)), "重整后的文件应存在")
+        assertTrue(Files.exists(Path.of(override).parent.resolve("movie.nfo")), "重整后应生成 movie.nfo")
+        assertTrue(Files.notExists(targetDir.resolve("ABP-777")), "旧整理目录应被清理")
+
+        // 记录指向新目标
+        val after = (rest.getForEntity("/api/v1/file-records?number=ABP-777", Map::class.java).body!!["items"]
+            as List<Map<*, *>>).first()
+        assertEquals("organized", after["organizeStatus"])
+        assertEquals(override, after["targetPath"])
+
+        // 清理，避免污染其他测试（共享 SQLite 库）
+        jdbc.update("DELETE FROM file_records WHERE number = 'ABP-777'", emptyMap<String, Any>())
+        jdbc.update("DELETE FROM movies WHERE number = 'ABP-777'", emptyMap<String, Any>())
+    }
+
+    @Test
+    fun `删除影片记录`() {
+        val headers = org.springframework.http.HttpHeaders().apply { contentType = org.springframework.http.MediaType.APPLICATION_JSON }
+        // 通过扫描落库创建影片 + 文件记录
+        val resp = rest.postForEntity(
+            "/api/v1/scans/commit",
+            org.springframework.http.HttpEntity(
+                mapOf(
+                    "items" to listOf(
+                        mapOf(
+                            "sourcePath" to "C:/del/TEST-901.mp4", "fileName" to "TEST-901.mp4",
+                            "fileSize" to 1024L, "fileMtime" to null,
+                        ),
+                    ),
+                ),
+                headers,
+            ),
+            Map::class.java,
+        )
+        assertEquals(HttpStatus.OK, resp.statusCode)
+        assertEquals(1L, (rest.getForEntity("/api/v1/movies?keyword=TEST-901", Map::class.java).body!!["total"] as Number).toLong())
+        assertEquals(1L, (rest.getForEntity("/api/v1/file-records?number=TEST-901", Map::class.java).body!!["total"] as Number).toLong())
+
+        // 删除
+        val delResp = rest.exchange(
+            "/api/v1/movies/TEST-901",
+            org.springframework.http.HttpMethod.DELETE,
+            org.springframework.http.HttpEntity<Void>(null, headers),
+            Void::class.java,
+        )
+        assertEquals(HttpStatus.NO_CONTENT, delResp.statusCode)
+        assertEquals(0L, (rest.getForEntity("/api/v1/movies?keyword=TEST-901", Map::class.java).body!!["total"] as Number).toLong())
+        assertEquals(0L, (rest.getForEntity("/api/v1/file-records?number=TEST-901", Map::class.java).body!!["total"] as Number).toLong())
+
+        // 重复删除 → 404
+        val delAgain = rest.exchange(
+            "/api/v1/movies/TEST-901",
+            org.springframework.http.HttpMethod.DELETE,
+            org.springframework.http.HttpEntity<Void>(null, headers),
+            Map::class.java,
+        )
+        assertEquals(HttpStatus.NOT_FOUND, delAgain.statusCode)
+    }
+
     private fun insertFakeScrape(number: String) {
         // 通过应用内 jdbcTemplate 直接写入，模拟刮削结果
         jdbc.update(

@@ -10,6 +10,9 @@ import type {
   MovieSort,
   MovieStatus,
   MovieSummary,
+  OrganizePreviewRequest,
+  OrganizePreviewResponse,
+  OrganizeRecordItem,
   OrganizeRequest,
   Paged,
   PipelineRequest,
@@ -72,6 +75,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     }
     throw new Error(message)
   }
+  if (res.status === 204) return undefined as T
   return res.json() as Promise<T>
 }
 
@@ -136,6 +140,16 @@ export const api = {
   triggerOrganize(body: OrganizeRequest) {
     return post<JobAccepted>('/organize', body)
   },
+  /** 整理预览：同步计算每条记录的目标路径，不执行 */
+  previewOrganize(body: OrganizePreviewRequest) {
+    return post<OrganizePreviewResponse>('/organize/preview', body)
+  },
+  /** 整理弹窗文件记录列表（group: pending | organized） */
+  listOrganizeRecords(group: 'pending' | 'organized', page = 1, size = 100, keyword?: string) {
+    return request<Paged<OrganizeRecordItem>>(
+      `/organize/records${qs({ group, page, size, keyword })}`,
+    )
+  },
   triggerPipeline(body: PipelineRequest) {
     return post<JobAccepted>('/pipeline', body)
   },
@@ -155,6 +169,10 @@ export const api = {
   },
   getMovie(number: string) {
     return request<MovieDetail>(`/movies/${encodeURIComponent(number)}`)
+  },
+  /** 删除影片记录（含关联文件记录与本地图片缓存，不动视频文件） */
+  deleteMovie(number: string) {
+    return request<void>(`/movies/${encodeURIComponent(number)}`, { method: 'DELETE' })
   },
 
   // 文件记录

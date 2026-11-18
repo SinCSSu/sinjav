@@ -31,6 +31,8 @@ class JavBusScraper(
     private val selActresses = "div.star-name a"
     // 剧照：<div id="sample-waterfall">（无样本的影片该 div 不存在）
     private val selSamples = "div#sample-waterfall a"
+    // 简介：<div class="col-md-12 movie-description"><div class="panel-heading">簡介</div><div class="panel-body"><p>…
+    private val selPlot = "div.movie-description div.panel-body p"
 
     override fun scrape(number: String): MovieMetadata {
         val base = props.scraper.baseUrlJavbus.trimEnd('/')
@@ -79,6 +81,7 @@ class JavBusScraper(
             durationMin = durationMin,
             coverUrl = coverUrl,
             previewUrls = previews,
+            plot = doc.selectFirst(selPlot)?.text()?.trim()?.ifBlank { null },
             actresses = actresses,
             genres = doc.select(selGenres).map { it.text().trim() }.filter { it.isNotBlank() },
         )

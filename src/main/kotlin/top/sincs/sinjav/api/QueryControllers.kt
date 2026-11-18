@@ -13,6 +13,7 @@ import top.sincs.sinjav.api.dto.FileRecordDto
 import top.sincs.sinjav.api.dto.JobDto
 import top.sincs.sinjav.api.dto.MovieDetailDto
 import top.sincs.sinjav.api.dto.MovieSummaryDto
+import top.sincs.sinjav.api.dto.OrganizeRecordDto
 import top.sincs.sinjav.api.dto.PageDto
 import top.sincs.sinjav.api.dto.SettingsDto
 import top.sincs.sinjav.api.dto.SettingsUpdate
@@ -27,6 +28,7 @@ import top.sincs.sinjav.domain.MovieRepository
 class MovieController(
     private val movies: MovieRepository,
     private val fileRecords: FileRecordRepository,
+    private val imageStore: top.sincs.sinjav.scraper.ImageStore,
 ) {
 
     @GetMapping("/movies")
@@ -50,7 +52,7 @@ class MovieController(
         val m = movies.findByNumber(number) ?: throw NoSuchElementException("影片不存在: $number")
         return ResponseEntity.ok(
             MovieDetailDto(
-                number = m.number, title = m.title, titleZh = m.titleZh, rawNumber = m.rawNumber,
+                number = m.number, title = m.title, titleZh = m.titleZh, titleOrig = m.titleOrig, rawNumber = m.rawNumber,
                 releaseDate = m.releaseDate?.toString(), director = m.director, maker = m.maker,
                 label = m.label, series = m.series, durationMin = m.durationMin, coverUrl = m.coverUrl,
                 previewUrls = m.previewUrls, plot = m.plot, source = m.source, status = m.status,
@@ -61,6 +63,18 @@ class MovieController(
                 fileRecords = fileRecords.findByNumber(m.number).map { FileRecordDto.of(it) },
             ),
         )
+    }
+
+    /**
+     * 删除影片记录：影片 + 关联表 + 该番号的文件记录 + 本地刮削图片缓存。
+     * 不删除任何视频文件（零侵入）。
+     */
+    @org.springframework.web.bind.annotation.DeleteMapping("/movies/{number}")
+    fun delete(@PathVariable number: String): ResponseEntity<Void> {
+        if (!movies.delete(number)) throw NoSuchElementException("影片不存在: $number")
+        fileRecords.deleteByNumber(number)
+        imageStore.delete(number)
+        return ResponseEntity.noContent().build()
     }
 }
 
@@ -82,6 +96,30 @@ class FileRecordController(private val fileRecords: FileRecordRepository) {
         val sz = size.coerceIn(1, 200)
         val p = fileRecords.list(pg, sz, number, recognizeStatus, organizeStatus)
         return PageDto.of(pg, sz, p.total, p.items.map { FileRecordDto.of(it) })
+    }
+
+    /** 整理弹窗列表：按 group（pending/organized）分组返回文件记录（联出影片标题/封面） */
+    @GetMapping("/organize/records")
+    fun organizeRecords(
+        @RequestParam(defaultValue = "1") page: Int,
+        @RequestParam(defaultValue = "100") size: Int,
+        @RequestParam group: String,
+        @RequestParam(required = false) keyword: String?,
+    ): PageDto<OrganizeRecordDto> {
+        require(group in setOf("pending", "organized")) { "group 必须为 pending/organized" }
+        val pg = page.coerceAtLeast(1)
+        val sz = size.coerceIn(1, 500)
+        val (items, total) = fileRecords.listForOrganize(pg, sz, group, keyword)
+        return PageDto.of(
+            pg, sz, total,
+            items.map {
+                OrganizeRecordDto(
+                    recordId = it.id, sourcePath = it.sourcePath, fileName = it.fileName,
+                    fileSize = it.fileSize, number = it.number, title = it.title, coverUrl = it.coverUrl,
+                    organizeStatus = it.organizeStatus, targetPath = it.targetPath, linkMode = it.linkMode,
+                )
+            },
+        )
     }
 }
 

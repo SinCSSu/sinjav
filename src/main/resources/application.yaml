@@ -35,6 +35,9 @@ sinjav:
     max-retries-per-item: 1   # 单次任务内每条番号最大重试次数
     base-url-javbus: "https://www.javbus.com"
     base-url-javdb: "https://javdb.com"
+    deepl-api-key: ""          # DeepL API key（免费 key 以 :fx 结尾）；配置后优先使用
+    baidu-translate-app-id: "" # 百度翻译 APP ID；未配置 DeepL 时使用
+    baidu-translate-secret: "" # 百度翻译密钥
   organize:
     target-dir: ""
     mode: hardlink            # hardlink | symlink | move | copy

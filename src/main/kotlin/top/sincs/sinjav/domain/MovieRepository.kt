@@ -13,6 +13,7 @@ private val MOVIE_MAPPER = RowMapper { rs, _ ->
         rawNumber = rs.getString("raw_number"),
         title = rs.getString("title"),
         titleZh = rs.getString("title_zh"),
+        titleOrig = rs.getString("title_orig"),
         releaseDate = rs.getDate("release_date")?.toLocalDate(),
         director = rs.getString("director"),
         maker = rs.getString("maker"),
@@ -67,13 +68,13 @@ class MovieRepository(private val jdbc: NamedParameterJdbcTemplate) {
 
     fun markScraped(
         number: String,
-        title: String?, titleZh: String?, releaseDate: LocalDate?, director: String?,
+        title: String?, titleZh: String?, titleOrig: String?, releaseDate: LocalDate?, director: String?,
         maker: String?, label: String?, series: String?, durationMin: Int?,
         coverUrl: String?, previewUrls: List<String>, plot: String?,
         source: String, actresses: List<String>, genres: List<String>,
     ) {
         val params = mapOf(
-            "n" to number, "t" to title, "tz" to titleZh,
+            "n" to number, "t" to title, "tz" to titleZh, "to" to titleOrig,
             "rd" to releaseDate?.let { Date.valueOf(it) }, "d" to director, "mk" to maker,
             "lb" to label, "se" to series, "du" to durationMin, "cv" to coverUrl,
             "pv" to previewUrls.joinToString(",", "[", "]") { "\"${it.replace("\"", "\\\"")}\"" },
@@ -82,7 +83,7 @@ class MovieRepository(private val jdbc: NamedParameterJdbcTemplate) {
         jdbc.update(
             """
             UPDATE movies SET
-                title = :t, title_zh = :tz, release_date = :rd, director = :d, maker = :mk,
+                title = :t, title_zh = :tz, title_orig = :to, release_date = :rd, director = :d, maker = :mk,
                 label = :lb, series = :se, duration_min = :du, cover_url = :cv, preview_urls = :pv,
                 plot = :pl, source = :src, status = 'scraped', fail_reason = NULL,
                 scraped_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
@@ -99,6 +100,15 @@ class MovieRepository(private val jdbc: NamedParameterJdbcTemplate) {
             "UPDATE movies SET status = 'failed', fail_reason = :r, updated_at = CURRENT_TIMESTAMP WHERE number = :n",
             mapOf("n" to number, "r" to reason),
         )
+    }
+
+    /** 删除影片记录及其关联（女优/类型关联表），不删除 actress/genre 主数据（可能被其他影片共用）。返回是否存在并删除 */
+    fun delete(number: String): Boolean {
+        val movie = findByNumber(number) ?: return false
+        jdbc.update("DELETE FROM movie_actresses WHERE movie_id = :id", mapOf("id" to movie.id))
+        jdbc.update("DELETE FROM movie_genres WHERE movie_id = :id", mapOf("id" to movie.id))
+        jdbc.update("DELETE FROM movies WHERE id = :id", mapOf("id" to movie.id))
+        return true
     }
 
     private fun linkActress(movieId: Long, name: String) {

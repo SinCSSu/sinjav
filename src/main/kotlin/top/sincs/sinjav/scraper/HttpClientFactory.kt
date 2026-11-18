@@ -71,6 +71,23 @@ class HttpClientFactory(private val props: AppProperties) {
 
     fun download(url: String, referer: String? = null): ByteArray = downloadDetailed(url, referer).bytes
 
+    /** POST JSON 请求（如 DeepL 翻译 API），返回响应体 */
+    fun postJson(url: String, json: String, headers: Map<String, String> = emptyMap()): String {
+        throttle()
+        try {
+            val builder = HttpRequest.newBuilder(URI.create(url))
+                .timeout(Duration.ofMillis(props.scraper.timeoutMs))
+                .header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString(json))
+            headers.forEach { (k, v) -> builder.header(k, v) }
+            val resp = client().send(builder.build(), HttpResponse.BodyHandlers.ofString())
+            if (resp.statusCode() != 200) throw ScrapeException("HTTP ${resp.statusCode()} for $url")
+            return resp.body()
+        } finally {
+            release()
+        }
+    }
+
     /** 下载二进制资源（图片），返回内容与 Content-Type */
     fun downloadDetailed(url: String, referer: String? = null): Downloaded {
         throttle()
