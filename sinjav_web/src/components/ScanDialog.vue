@@ -1,56 +1,515 @@
 <template>
-  <el-dialog v-model="visible" title="触发扫描" width="520px" :close-on-click-modal="false">
-    <el-form label-width="90px" label-position="left">
-      <el-form-item label="源目录" required>
+  <el-dialog
+    v-model="visible"
+    title="触发扫描"
+    width="min(1380px, 96vw)"
+    top="3vh"
+    :close-on-click-modal="false"
+    class="scan-dialog"
+  >
+    <div class="scan-layout">
+      <!-- 左栏：扫描目录配置 -->
+      <div class="col col-left">
+        <h4 class="col-title">扫描目录</h4>
         <el-input
-          v-model="sourceDirs"
-          type="textarea"
-          :rows="4"
-          placeholder="每行一个绝对路径，如 D:\Movies"
+          v-model="dirInput"
+          size="small"
+          placeholder="双击目录树节点填入路径，或手动输入"
+          @click="showTree = true"
+        >
+          <template #append>
+            <el-button @click="toggleTree">目录树</el-button>
+          </template>
+        </el-input>
+        <el-collapse-transition>
+          <div v-show="showTree" class="tree-wrap">
+            <el-tree
+              :key="treeKey"
+              :props="treeProps"
+              :load="loadNode"
+              lazy
+              node-key="path"
+              highlight-current
+              :expand-on-click-node="false"
+              @node-click="onNodeClick"
+            />
+          </div>
+        </el-collapse-transition>
+        <div class="opt-row">
+          <span>递归子目录</span>
+          <el-switch v-model="recursive" size="small" />
+        </div>
+        <el-collapse class="advanced">
+          <el-collapse-item title="高级设置">
+            <div class="field">
+              <span class="field-label">后缀名（已填入全局配置，可改）</span>
+              <el-select
+                v-model="extensions"
+                multiple
+                filterable
+                allow-create
+                default-first-option
+                size="small"
+                placeholder="如 mp4 / mkv"
+                class="w-full"
+              />
+            </div>
+            <div class="field">
+              <span class="field-label">最小文件大小（MB，已填入全局配置，可改）</span>
+              <el-input-number v-model="minFileSizeMb" :min="0" size="small" class="w-full" />
+            </div>
+            <div class="field">
+              <span class="field-label">文件名匹配正则（空 = 不过滤）</span>
+              <el-input
+                v-model="filenamePattern"
+                size="small"
+                placeholder="如 (?i)(?:^|[^a-z0-9])[a-z]{2,6}[-_]?\d{2,5}"
+              />
+            </div>
+          </el-collapse-item>
+        </el-collapse>
+      </div>
+
+      <!-- 中栏：扫描结果 -->
+      <div class="col col-mid">
+        <div class="col-title mid-title">
+          <span>扫描结果</span>
+          <span v-if="previewData" class="stat">
+            共 {{ previewData.total }} 个 · 可识别 {{ recognizedCount }} · 已移除 {{ removedSet.size }}
+          </span>
+        </div>
+        <el-alert
+          v-if="previewError"
+          :title="previewError"
+          type="error"
+          :closable="false"
         />
-      </el-form-item>
-      <el-form-item label="递归子目录">
-        <el-switch v-model="recursive" />
-      </el-form-item>
-    </el-form>
+        <el-alert
+          v-else-if="previewData?.truncated"
+          title="结果过多，仅显示前 5000 条"
+          type="warning"
+          :closable="false"
+        />
+        <el-empty
+          v-else-if="!previewData || previewData.items.length === 0"
+          :description="previewData ? '没有符合条件的文件' : '配置目录后点击下方「扫描」'"
+          :image-size="70"
+        />
+        <el-scrollbar v-else class="result-list">
+          <div
+            v-for="item in previewData.items"
+            :key="item.sourcePath"
+            class="result-row"
+            :class="{ removed: removedSet.has(item.sourcePath), active: selectedFile?.sourcePath === item.sourcePath }"
+            @click="selectedFile = item"
+          >
+            <div class="row-main">
+              <div class="row-name" :title="item.sourcePath">{{ item.fileName }}</div>
+              <div class="row-meta">
+                <span class="mono">{{ formatFileSize(item.fileSize) }}</span>
+                <el-tag v-if="item.number" type="success" size="small">{{ item.number }}</el-tag>
+                <el-tag v-else type="info" size="small">未识别</el-tag>
+              </div>
+            </div>
+            <el-button
+              v-if="!removedSet.has(item.sourcePath)"
+              link
+              type="danger"
+              size="small"
+              @click.stop="removedSet.add(item.sourcePath)"
+            >
+              移除
+            </el-button>
+            <el-button v-else link size="small" @click.stop="removedSet.delete(item.sourcePath)">
+              撤销
+            </el-button>
+          </div>
+        </el-scrollbar>
+      </div>
+
+      <!-- 右栏：详情与预览 -->
+      <div class="col col-right">
+        <h4 class="col-title">详情</h4>
+        <el-empty v-if="!selectedFile" description="点击左侧列表查看详情" :image-size="70" />
+        <template v-else>
+          <div class="detail-rows">
+            <div class="detail-row"><span class="k">文件名</span><span>{{ selectedFile.fileName }}</span></div>
+            <div class="detail-row"><span class="k">路径</span><span class="mono">{{ selectedFile.sourcePath }}</span></div>
+            <div class="detail-row"><span class="k">大小</span><span>{{ formatFileSize(selectedFile.fileSize) }}</span></div>
+            <div class="detail-row"><span class="k">修改时间</span><span>{{ formatDateTime(selectedFile.fileMtime) }}</span></div>
+            <div class="detail-row">
+              <span class="k">识别番号</span>
+              <el-tag v-if="selectedFile.number" type="success" size="small">{{ selectedFile.number }}</el-tag>
+              <el-tag v-else type="info" size="small">未识别</el-tag>
+            </div>
+          </div>
+          <div v-if="isPlayable(selectedFile.sourcePath)" class="player-wrap">
+            <video
+              :key="selectedFile.sourcePath"
+              :src="videoUrl(selectedFile.sourcePath)"
+              controls
+              preload="metadata"
+              class="player"
+            />
+          </div>
+          <el-alert
+            v-else
+            title="该格式浏览器不支持在线预览（不影响扫描与整理）"
+            type="info"
+            :closable="false"
+          />
+        </template>
+      </div>
+    </div>
+
     <template #footer>
-      <el-button @click="visible = false">取消</el-button>
-      <el-button type="primary" :loading="submitting" @click="submit">开始扫描</el-button>
+      <div class="dialog-footer">
+        <el-button type="primary" :loading="previewing" @click="doPreview">
+          扫描
+        </el-button>
+        <el-button
+          type="success"
+          :loading="committing"
+          :disabled="!canConfirm"
+          @click="doCommit"
+        >
+          确认
+        </el-button>
+      </div>
     </template>
   </el-dialog>
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
-import { api } from '../api'
+import { api, videoUrl } from '../api'
+import type { FsNode, ScanPreviewItem, ScanPreviewResponse } from '../api/types'
+import { formatDateTime, formatFileSize } from '../utils'
 
 const visible = defineModel<boolean>({ default: false })
 const emit = defineEmits<{ created: [] }>()
 
-const sourceDirs = ref('')
-const recursive = ref(true)
-const submitting = ref(false)
+// ---------- 每次打开重置为全新状态 ----------
+const treeKey = ref(0)
 
-async function submit() {
-  const dirs = sourceDirs.value
-    .split('\n')
-    .map((s) => s.trim())
-    .filter(Boolean)
-  if (dirs.length === 0) {
-    ElMessage.warning('请输入至少一个源目录')
+watch(visible, (open) => {
+  if (open) {
+    resetAll()
+    loadDefaults()
+  }
+})
+
+/** 用全局配置回填高级选项默认值 */
+async function loadDefaults() {
+  try {
+    const s = await api.getSettings()
+    extensions.value = (s.videoExtensions ?? '')
+      .split(',')
+      .map((x) => x.trim())
+      .filter(Boolean)
+    minFileSizeMb.value = s.minFileSizeMb ?? 0
+  } catch {
+    // 获取失败保持空值，后端仍会回退全局配置
+  }
+}
+
+function resetAll() {
+  dirInput.value = ''
+  recursive.value = true
+  extensions.value = []
+  minFileSizeMb.value = 0
+  filenamePattern.value = ''
+  previewing.value = false
+  committing.value = false
+  previewData.value = null
+  previewError.value = ''
+  removedSet.value = new Set()
+  selectedFile.value = null
+  showTree.value = false
+  // 递增 key 强制重建目录树，清掉懒加载缓存
+  treeKey.value++
+}
+
+// ---------- 左栏 ----------
+const showTree = ref(false)
+const dirInput = ref('')
+const recursive = ref(true)
+const extensions = ref<string[]>([])
+const minFileSizeMb = ref(0)
+const filenamePattern = ref('')
+
+const treeProps = {
+  label: 'name',
+  children: 'children',
+  isLeaf: () => false,
+}
+
+async function loadNode(node: unknown, resolve: (data: FsNode[]) => void) {
+  const n = node as { level: number; data: FsNode }
+  try {
+    if (n.level === 0) {
+      resolve(await api.listFsRoots())
+    } else {
+      resolve((await api.listFsDirs(n.data.path)).directories)
+    }
+  } catch {
+    resolve([])
+  }
+}
+
+// 单击=延迟展开下级（等待可能的双击）；双击=仅填入输入框，不展开不收缩
+let lastClick = { path: '', time: 0 }
+let clickTimer: number | undefined
+function onNodeClick(data: FsNode, node: unknown) {
+  const n = node as { expanded: boolean; expand: () => void; collapse: () => void }
+  const now = Date.now()
+  if (lastClick.path === data.path && now - lastClick.time < 400) {
+    // 双击：取消待执行的展开，只填路径
+    window.clearTimeout(clickTimer)
+    dirInput.value = data.path
+    lastClick = { path: '', time: 0 }
+  } else {
+    lastClick = { path: data.path, time: now }
+    window.clearTimeout(clickTimer)
+    clickTimer = window.setTimeout(() => {
+      if (n.expanded) n.collapse()
+      else n.expand()
+    }, 250)
+  }
+}
+
+function toggleTree() {
+  showTree.value = !showTree.value
+}
+
+// ---------- 中栏 ----------
+const previewing = ref(false)
+const committing = ref(false)
+const previewData = ref<ScanPreviewResponse | null>(null)
+const previewError = ref('')
+const removedSet = ref(new Set<string>())
+const selectedFile = ref<ScanPreviewItem | null>(null)
+
+const recognizedCount = computed(
+  () => previewData.value?.items.filter((i) => i.number).length ?? 0,
+)
+
+/** 已扫描出结果且仍有保留的文件时才可确认 */
+const canConfirm = computed(() => {
+  if (!previewData.value) return false
+  const kept = previewData.value.items.filter((i) => !removedSet.value.has(i.sourcePath))
+  return kept.length > 0
+})
+
+async function doPreview() {
+  const dir = dirInput.value.trim()
+  if (!dir) {
+    ElMessage.warning('请先在输入框填入扫描目录')
     return
   }
-  submitting.value = true
+  previewing.value = true
+  previewError.value = ''
+  previewData.value = null
+  removedSet.value = new Set()
+  selectedFile.value = null
   try {
-    const job = await api.triggerScan({ sourceDirs: dirs, recursive: recursive.value })
-    ElMessage.success(`扫描任务 #${job.jobId} 已创建`)
+    previewData.value = await api.previewScan({
+      sourceDirs: [dir],
+      recursive: recursive.value,
+      extensions: extensions.value.length ? extensions.value : undefined,
+      minFileSizeMb: minFileSizeMb.value > 0 ? minFileSizeMb.value : 0,
+      filenamePattern: filenamePattern.value.trim() || undefined,
+    })
+  } catch (e) {
+    previewError.value = e instanceof Error ? e.message : String(e)
+  } finally {
+    previewing.value = false
+  }
+}
+
+/** 确认：把保留的预览结果直接落库 */
+async function doCommit() {
+  if (!previewData.value) return
+  const kept = previewData.value.items
+    .filter((i) => !removedSet.value.has(i.sourcePath))
+    .map((i) => ({
+      sourcePath: i.sourcePath,
+      fileName: i.fileName,
+      fileSize: i.fileSize,
+      fileMtime: i.fileMtime,
+    }))
+  if (kept.length === 0) {
+    ElMessage.warning('没有保留的文件')
+    return
+  }
+  committing.value = true
+  try {
+    const result = await api.commitScan(kept)
+    ElMessage.success(`已入库 ${result.total} 个文件（识别 ${result.recognized} / 未识别 ${result.unrecognized}）`)
     visible.value = false
     emit('created')
   } catch (e) {
     ElMessage.error(e instanceof Error ? e.message : String(e))
   } finally {
-    submitting.value = false
+    committing.value = false
   }
 }
+
+// ---------- 右栏 ----------
+const PLAYABLE_EXTS = new Set(['mp4', 'm4v', 'webm', 'mov'])
+
+function isPlayable(path: string): boolean {
+  const ext = path.split('.').pop()?.toLowerCase() ?? ''
+  return PLAYABLE_EXTS.has(ext)
+}
 </script>
+
+<style scoped>
+.scan-layout {
+  display: grid;
+  grid-template-columns: 300px 1fr 380px;
+  gap: 12px;
+  height: 68vh;
+  min-height: 520px;
+}
+.col {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  border: 1px solid var(--glass-border-soft);
+  border-radius: var(--glass-radius);
+  padding: 14px;
+  overflow: hidden;
+  background: var(--glass-bg-soft);
+  backdrop-filter: var(--glass-blur-light);
+  -webkit-backdrop-filter: var(--glass-blur-light);
+}
+.col-title {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+}
+.col-left {
+  width: 300px;
+}
+.tree-wrap {
+  flex: 1;
+  overflow: auto;
+  border: 1px solid var(--el-border-color-lighter);
+  border-radius: 8px;
+  padding: 4px;
+  background: var(--el-fill-color-blank);
+  max-height: 260px;
+  min-height: 120px;
+}
+.opt-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 13px;
+}
+.advanced :deep(.el-collapse-item__header) {
+  font-size: 13px;
+}
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 10px;
+}
+.field-label {
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+}
+.w-full {
+  width: 100%;
+}
+.mid-title {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+}
+.stat {
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+}
+.result-list {
+  flex: 1;
+}
+.result-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.result-row:hover {
+  background: rgba(255, 255, 255, 0.55);
+}
+.result-row.active {
+  background: var(--glass-accent);
+  box-shadow: 0 0 0 1px rgba(91, 110, 225, 0.2) inset;
+}
+.result-row.removed {
+  opacity: 0.45;
+  text-decoration: line-through;
+}
+.row-main {
+  flex: 1;
+  min-width: 0;
+}
+.row-name {
+  font-size: 13px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.row-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 2px;
+}
+.dialog-footer {
+  display: flex;
+  justify-content: flex-end;
+}
+.detail-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: 13px;
+}
+.detail-row {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  word-break: break-all;
+}
+.detail-row .k {
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+}
+.player-wrap {
+  margin-top: auto;
+}
+.player {
+  width: 100%;
+  max-height: 240px;
+  border-radius: var(--glass-radius-sm);
+  background: rgba(28, 32, 52, 0.88);
+  box-shadow: var(--glass-shadow);
+}
+@media (max-width: 1200px) {
+  .scan-layout {
+    grid-template-columns: 250px 1fr 300px;
+    min-height: 440px;
+  }
+  .col-left {
+    width: 250px;
+  }
+}
+</style>

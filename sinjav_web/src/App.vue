@@ -46,12 +46,13 @@ const route = useRoute()
 }
 .sidebar {
   margin: 12px 0 12px 12px;
-  border-radius: 16px;
-  border: 1px solid rgba(255, 255, 255, 0.65);
-  background: rgba(255, 255, 255, 0.55);
-  backdrop-filter: blur(18px) saturate(150%);
-  -webkit-backdrop-filter: blur(18px) saturate(150%);
-  box-shadow: 0 8px 32px rgba(31, 38, 135, 0.12);
+  padding: 8px;
+  border-radius: var(--glass-radius);
+  border: 1px solid var(--glass-border);
+  background: var(--glass-bg);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  box-shadow: var(--glass-shadow);
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -59,11 +60,12 @@ const route = useRoute()
 .logo {
   display: flex;
   align-items: center;
-  gap: 8px;
-  height: 56px;
-  padding: 0 20px;
-  font-size: 18px;
-  font-weight: 600;
+  gap: 10px;
+  height: 60px;
+  padding: 0 16px;
+  font-size: 19px;
+  font-weight: 700;
+  letter-spacing: 0.4px;
   color: var(--el-color-primary);
 }
 .menu {
@@ -71,8 +73,27 @@ const route = useRoute()
   flex: 1;
   background: transparent;
 }
+.menu :deep(.el-menu-item) {
+  border-radius: var(--glass-radius-sm);
+  margin: 3px 0;
+  height: 44px;
+  transition: background 0.18s ease;
+}
+.menu :deep(.el-menu-item:hover) {
+  background: rgba(255, 255, 255, 0.55);
+}
+.menu :deep(.el-menu-item.is-active) {
+  background: var(--glass-accent);
+  font-weight: 600;
+}
 .main {
   overflow-y: auto;
   background: transparent;
+  padding: 20px 22px;
+}
+@media (max-width: 900px) {
+  .main {
+    padding: 12px;
+  }
 }
 </style>

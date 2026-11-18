@@ -59,6 +59,9 @@ class SinJavApplicationTests {
         val resp = rest.getForEntity("/api/v1/settings", Map::class.java)
         assertEquals(HttpStatus.OK, resp.statusCode)
         assertEquals("javbus, javdb", resp.body?.get("sourceOrder"))
+        // 扫描全局配置（供扫描弹窗高级选项回填默认值）
+        assertEquals("mp4, mkv, avi, wmv, iso, rmvb, ts, m2ts, mov, flv", resp.body?.get("videoExtensions"))
+        assertEquals(50L, ((resp.body?.get("minFileSizeMb") as Number).toLong()))
     }
 
     @Test
@@ -150,6 +153,53 @@ class SinJavApplicationTests {
         // 任务列表
         val jobList = rest.getForEntity("/api/v1/jobs?type=organize", Map::class.java).body!!
         assertTrue((jobList["total"] as Number).toLong() >= 1)
+    }
+
+    @Test
+    fun `扫描结果落库端点`() {
+        val headers = org.springframework.http.HttpHeaders().apply { contentType = org.springframework.http.MediaType.APPLICATION_JSON }
+        val items = listOf(
+            mapOf(
+                "sourcePath" to "C:/videos/MIDV-999.mp4", "fileName" to "MIDV-999.mp4",
+                "fileSize" to 1024L, "fileMtime" to "2024-01-01T00:00:00Z",
+            ),
+            mapOf(
+                "sourcePath" to "C:/videos/test.mp4", "fileName" to "test.mp4",
+                "fileSize" to 2048L, "fileMtime" to null,
+            ),
+        )
+        val resp = rest.postForEntity(
+            "/api/v1/scans/commit",
+            org.springframework.http.HttpEntity(mapOf("items" to items), headers),
+            Map::class.java,
+        )
+        assertEquals(HttpStatus.OK, resp.statusCode, "commit 响应: ${resp.body}")
+        assertEquals(2L, (resp.body?.get("total") as Number).toLong())
+        assertEquals(1L, (resp.body?.get("recognized") as Number).toLong())
+        assertEquals(1L, (resp.body?.get("unrecognized") as Number).toLong())
+
+        // 文件记录与影片记录均落库
+        val records = rest.getForEntity("/api/v1/file-records?number=MIDV-999", Map::class.java).body!!
+        assertEquals(1L, (records["total"] as Number).toLong())
+        val record = (records["items"] as List<Map<*, *>>).first()
+        assertEquals("recognized", record["recognizeStatus"])
+        val movies = rest.getForEntity("/api/v1/movies?keyword=MIDV-999", Map::class.java).body!!
+        assertEquals(1L, (movies["total"] as Number).toLong())
+        assertEquals("pending", (movies["items"] as List<Map<*, *>>).first()["status"])
+
+        // 重复提交幂等（同指纹不重复）
+        val resp2 = rest.postForEntity(
+            "/api/v1/scans/commit",
+            org.springframework.http.HttpEntity(mapOf("items" to items), headers),
+            Map::class.java,
+        )
+        assertEquals(HttpStatus.OK, resp2.statusCode)
+        val records2 = rest.getForEntity("/api/v1/file-records?number=MIDV-999", Map::class.java).body!!
+        assertEquals(1L, (records2["total"] as Number).toLong())
+
+        // 清理本测试写入的数据，避免污染其他测试（共享 SQLite 库）
+        jdbc.update("DELETE FROM file_records WHERE source_path LIKE 'C:/videos/%'", emptyMap<String, Any>())
+        jdbc.update("DELETE FROM movies WHERE number = 'MIDV-999'", emptyMap<String, Any>())
     }
 
     private fun insertFakeScrape(number: String) {

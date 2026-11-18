@@ -97,6 +97,55 @@ export interface ScanRequest {
   sourceDirs: string[]
   recursive?: boolean
   extensions?: string[]
+  minFileSizeMb?: number
+  excludePaths?: string[]
+  filenamePattern?: string
+}
+
+export interface FsNode {
+  path: string
+  name: string
+}
+
+export interface FsDirListing {
+  path: string
+  directories: FsNode[]
+}
+
+export interface ScanPreviewRequest {
+  sourceDirs: string[]
+  recursive?: boolean
+  extensions?: string[]
+  minFileSizeMb?: number
+  filenamePattern?: string
+}
+
+export interface ScanPreviewItem {
+  sourcePath: string
+  fileName: string
+  fileSize: number
+  fileMtime: string | null
+  number: string | null
+  recognizeStatus: 'recognized' | 'unrecognized'
+}
+
+export interface ScanPreviewResponse {
+  items: ScanPreviewItem[]
+  total: number
+  truncated: boolean
+}
+
+export interface ScanCommitItem {
+  sourcePath: string
+  fileName: string
+  fileSize: number
+  fileMtime?: string | null
+}
+
+export interface ScanCommitResponse {
+  total: number
+  recognized: number
+  unrecognized: number
 }
 
 export interface ScrapeRequest {
@@ -136,6 +185,9 @@ export type SettingsUpdate = {
   conflictPolicy?: ConflictPolicy
   generateNfo?: boolean
   downloadImages?: boolean
+  /** 只读：扫描全局配置（GET 返回，PUT 忽略），供扫描弹窗高级选项回填 */
+  videoExtensions?: string
+  minFileSizeMb?: number
 }
 
 export type Settings = SettingsUpdate

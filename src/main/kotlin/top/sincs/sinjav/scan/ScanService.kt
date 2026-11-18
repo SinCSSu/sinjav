@@ -12,6 +12,8 @@ data class ScanParams(
     val recursive: Boolean = true,
     val extensions: Set<String> = emptySet(),
     val minFileSizeMb: Long? = null,
+    val excludePaths: Set<String> = emptySet(),
+    val filenamePattern: String? = null,
 )
 
 @Service
@@ -33,7 +35,14 @@ class ScanService(
     fun execute(jobId: Long, params: ScanParams) {
         val minSize = params.minFileSizeMb ?: props.scan.minFileSizeMb
         val files = try {
-            scanner.scan(params.sourceDirs, params.recursive, params.extensions, minSize)
+            applyFilters(
+                scanner.scan(params.sourceDirs, params.recursive, params.extensions, minSize),
+                params.excludePaths, params.filenamePattern,
+            )
+        } catch (e: IllegalArgumentException) {
+            jobs.appendError(jobId, "scan", e.message ?: "非法参数")
+            jobs.finish(jobId, "failed")
+            return
         } catch (e: Exception) {
             log.error("扫描目录失败", e)
             jobs.appendError(jobId, "scan", "目录遍历失败: ${e.message}")
@@ -70,5 +79,22 @@ class ScanService(
         }
         jobs.finish(jobId, "completed")
         log.info("扫描完成 jobId={} 共 {} 个文件", jobId, files.size)
+    }
+
+    companion object {
+        /** 预览与正式扫描共用的过滤：排除清单 + 文件名正则（非法正则抛 IllegalArgumentException） */
+        internal fun applyFilters(
+            files: List<ScannedFile>,
+            excludePaths: Set<String>,
+            filenamePattern: String?,
+        ): List<ScannedFile> {
+            val regex = filenamePattern?.let { p ->
+                runCatching { Regex(p) }.getOrElse { throw IllegalArgumentException("文件名正则非法: ${it.message}") }
+            }
+            return files.asSequence()
+                .filter { it.sourcePath !in excludePaths }
+                .filter { regex == null || regex.containsMatchIn(it.fileName) }
+                .toList()
+        }
     }
 }

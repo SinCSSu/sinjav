@@ -13,12 +13,27 @@ data class ScanRequest(
     val sourceDirs: List<String>,
     val recursive: Boolean = true,
     val extensions: List<String>? = null,
+    val minFileSizeMb: Long? = null,
+    val excludePaths: List<String>? = null,
+    val filenamePattern: String? = null,
+)
+
+data class ScanPreviewRequest(
+    @field:jakarta.validation.constraints.NotEmpty(message = "sourceDirs 不能为空")
+    val sourceDirs: List<String>,
+    val recursive: Boolean = true,
+    val extensions: List<String>? = null,
+    val minFileSizeMb: Long? = null,
+    val filenamePattern: String? = null,
+)
+
+data class ScanCommitRequest(
+    @field:jakarta.validation.constraints.NotEmpty(message = "items 不能为空")
+    val items: List<top.sincs.sinjav.scan.ScanCommitItem>,
 )
 
 data class ScrapeRequest(
     val numbers: List<String>? = null,
-    val sources: List<String>? = null,
-    val strategy: String? = null,
 )
 
 data class OrganizeRequest(
@@ -141,6 +156,7 @@ data class SettingsDto(
     val proxyHost: String, val proxyPort: Int, val requestIntervalMs: Long, val concurrency: Int,
     val targetDir: String, val mode: String, val namingTemplate: String, val conflictPolicy: String,
     val generateNfo: Boolean, val downloadImages: Boolean,
+    val videoExtensions: String, val minFileSizeMb: Long,
 ) {
     companion object {
         fun from(props: AppProperties) = SettingsDto(
@@ -151,6 +167,7 @@ data class SettingsDto(
             targetDir = props.organize.targetDir, mode = props.organize.mode,
             namingTemplate = props.organize.namingTemplate, conflictPolicy = props.organize.conflictPolicy,
             generateNfo = props.organize.generateNfo, downloadImages = props.organize.downloadImages,
+            videoExtensions = props.scan.videoExtensions, minFileSizeMb = props.scan.minFileSizeMb,
         )
     }
 }

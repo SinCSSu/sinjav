@@ -6,10 +6,9 @@ import top.sincs.sinjav.domain.JobRepository
 import top.sincs.sinjav.domain.MovieRepository
 import top.sincs.sinjav.scan.NumberRecognizer
 
+/** 数据源与合并策略由全局设置控制（设置页配置），不作为单次任务参数 */
 data class ScrapeParams(
     val numbers: List<String>? = null,
-    val sources: List<String>? = null,
-    val strategy: String? = null,
 )
 
 @Service
@@ -36,7 +35,7 @@ class ScrapeService(
         var failed = 0
         numbers.forEach { number ->
             try {
-                val (source, meta) = chain.scrapeWithSource(number, params.sources, params.strategy)
+                val (source, meta) = chain.scrapeWithSource(number)
                 movies.markScraped(
                     number = number,
                     title = meta.title, titleZh = meta.titleZh, releaseDate = meta.releaseDate,

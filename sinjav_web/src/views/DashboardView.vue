@@ -148,6 +148,10 @@ onUnmounted(() => {
 }
 .job-card {
   cursor: pointer;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+.job-card:hover {
+  transform: translateY(-2px);
 }
 .job-head {
   display: flex;

@@ -16,6 +16,8 @@ servers:
 tags:
   - name: scan
     description: 目录扫描与番号识别
+  - name: fs
+    description: 本地文件系统浏览与视频流（只读）
   - name: scrape
     description: 元数据刮削（JavBus / JavDB）
   - name: organize
@@ -30,6 +32,131 @@ tags:
     description: 运行时配置
 
 paths:
+  /api/v1/fs/roots:
+    get:
+      tags: [fs]
+      operationId: listFsRoots
+      summary: 目录树根节点
+      description: Windows 返回各盘符（C:\、D:\…），Linux/Docker 返回 /。
+      responses:
+        '200':
+          description: 根节点列表
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/FsNode'
+
+  /api/v1/fs/dirs:
+    get:
+      tags: [fs]
+      operationId: listFsDirs
+      summary: 列出子目录（目录树懒加载）
+      parameters:
+        - name: path
+          in: query
+          required: true
+          description: 目录绝对路径
+          schema:
+            type: string
+      responses:
+        '200':
+          description: 子目录列表（按名称排序，不含文件）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FsDirListing'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/v1/scans/preview:
+    post:
+      tags: [scan]
+      operationId: previewScan
+      summary: 预览扫描（同步，不写数据库）
+      description: |
+        同步遍历目录返回候选文件列表与番号识别结果，供前端勾选排除后再正式扫描。
+        超过 5000 条截断（truncated=true）。支持文件名正则预过滤（与正式扫描同规则）。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ScanPreviewRequest'
+      responses:
+        '200':
+          description: 候选文件列表
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ScanPreviewResponse'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+
+  /api/v1/scans/commit:
+    post:
+      tags: [scan]
+      operationId: commitScan
+      summary: 扫描结果落库
+      description: |
+        将预览扫描中用户保留的文件直接写入 file_records 并创建 pending 影片记录。
+        按路径+大小+mtime 指纹 upsert，重复提交幂等。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ScanCommitRequest'
+      responses:
+        '200':
+          description: 落库结果
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ScanCommitResult'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+
+  /api/v1/videos:
+    get:
+      tags: [fs]
+      operationId: streamVideo
+      summary: 视频流预览（HTTP Range 分片传输）
+      description: |
+        按分片返回本地视频文件，浏览器 <video> 可边下边播、拖动进度。
+        MP4/WebM/MOV（H.264）可播放；MKV/AVI 等浏览器原生不支持。零侵入只读。
+      parameters:
+        - name: path
+          in: query
+          required: true
+          description: 视频文件绝对路径
+          schema:
+            type: string
+        - name: Range
+          in: header
+          required: false
+          description: 标准 HTTP Range 头（如 bytes=0-99）
+          schema:
+            type: string
+      responses:
+        '200':
+          description: 完整文件
+          content:
+            video/*:
+              schema:
+                type: string
+                format: binary
+        '206':
+          description: 分片内容
+          content:
+            video/*:
+              schema:
+                type: string
+                format: binary
+        '404':
+          $ref: '#/components/responses/NotFound'
+
   /api/v1/scans:
     post:
       tags: [scan]
@@ -411,27 +538,154 @@ components:
           items:
             type: string
           description: 视频扩展名白名单（省略时使用全局配置）
+        minFileSizeMb:
+          type: integer
+          description: 最小文件大小（MB，省略时使用全局配置）
+        excludePaths:
+          type: array
+          items:
+            type: string
+          description: 排除的文件绝对路径列表（预览后剔除的文件）
+        filenamePattern:
+          type: string
+          description: 文件名正则，不匹配的文件直接过滤（省略时不过滤）
       required: [sourceDirs]
+
+    ScanPreviewRequest:
+      type: object
+      description: 预览扫描请求
+      properties:
+        sourceDirs:
+          type: array
+          minItems: 1
+          items:
+            type: string
+        recursive:
+          type: boolean
+          default: true
+        extensions:
+          type: array
+          items:
+            type: string
+        minFileSizeMb:
+          type: integer
+          description: 最小文件大小（MB，预览时默认 0 不过滤）
+        filenamePattern:
+          type: string
+          description: 文件名正则预过滤
+      required: [sourceDirs]
+
+    ScanPreviewResponse:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/ScanPreviewItem'
+        total:
+          type: integer
+          format: int64
+          description: 过滤后总条数
+        truncated:
+          type: boolean
+          description: 是否超过 5000 条被截断
+      required: [items, total, truncated]
+
+    ScanPreviewItem:
+      type: object
+      properties:
+        sourcePath:
+          type: string
+        fileName:
+          type: string
+        fileSize:
+          type: integer
+          format: int64
+        fileMtime:
+          type: string
+          format: date-time
+          nullable: true
+        number:
+          type: string
+          nullable: true
+          description: 识别出的番号（无法识别为 null）
+        recognizeStatus:
+          type: string
+          enum: [recognized, unrecognized]
+      required: [sourcePath, fileName, fileSize, recognizeStatus]
+
+    ScanCommitRequest:
+      type: object
+      description: 扫描结果落库请求
+      properties:
+        items:
+          type: array
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/ScanCommitItem'
+      required: [items]
+
+    ScanCommitItem:
+      type: object
+      properties:
+        sourcePath:
+          type: string
+        fileName:
+          type: string
+        fileSize:
+          type: integer
+          format: int64
+        fileMtime:
+          type: string
+          format: date-time
+          nullable: true
+      required: [sourcePath, fileName, fileSize]
+
+    ScanCommitResult:
+      type: object
+      properties:
+        total:
+          type: integer
+          format: int64
+        recognized:
+          type: integer
+          format: int64
+        unrecognized:
+          type: integer
+          format: int64
+      required: [total, recognized, unrecognized]
+
+    FsNode:
+      type: object
+      properties:
+        path:
+          type: string
+          description: 绝对路径（Windows 盘符或 Linux /）
+        name:
+          type: string
+      required: [path, name]
+
+    FsDirListing:
+      type: object
+      properties:
+        path:
+          type: string
+        directories:
+          type: array
+          items:
+            $ref: '#/components/schemas/FsNode'
+      required: [path, directories]
 
     ScrapeRequest:
       type: object
-      description: 刮削请求
+      description: |
+        刮削请求。数据源与合并策略由全局设置（设置页 sourceOrder/strategy）控制，不作为单次任务参数。
       properties:
         numbers:
           type: array
           items:
             type: string
           description: 指定番号列表；省略时刮削全部「未刮削」番号
-        sources:
-          type: array
-          items:
-            type: string
-            enum: [javbus, javdb]
-          description: 数据源及优先顺序（省略时使用全局配置 source-order）
-        strategy:
-          type: string
-          enum: [fallback, merge]
-          description: fallback=主备回退；merge=字段合并（主源优先）
       required: []
 
     OrganizeRequest:

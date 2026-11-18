@@ -152,8 +152,10 @@ async function load(number: string) {
   width: 150px;
   flex-shrink: 0;
   aspect-ratio: 2 / 3;
-  background: var(--el-fill-color);
-  border-radius: 6px;
+  background: linear-gradient(160deg, rgba(255, 255, 255, 0.6), rgba(200, 214, 255, 0.35));
+  border: 1px solid var(--glass-border-soft);
+  border-radius: var(--glass-radius-sm);
+  box-shadow: var(--glass-shadow);
   overflow: hidden;
 }
 .detail-cover img {

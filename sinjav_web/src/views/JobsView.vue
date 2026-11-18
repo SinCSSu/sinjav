@@ -188,8 +188,11 @@ onUnmounted(() => {
   margin: 16px 0 8px;
 }
 .params {
-  background: var(--el-fill-color);
-  border-radius: 6px;
+  background: var(--glass-bg-soft);
+  backdrop-filter: var(--glass-blur-light);
+  -webkit-backdrop-filter: var(--glass-blur-light);
+  border: 1px solid var(--glass-border-soft);
+  border-radius: var(--glass-radius-sm);
   padding: 12px;
   font-size: 12px;
   line-height: 1.6;

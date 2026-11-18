@@ -1,5 +1,7 @@
 import type {
   FileRecord,
+  FsDirListing,
+  FsNode,
   Job,
   JobAccepted,
   JobStatus,
@@ -13,6 +15,10 @@ import type {
   PipelineRequest,
   RecognizeStatus,
   OrganizeStatus,
+  ScanCommitItem,
+  ScanCommitResponse,
+  ScanPreviewRequest,
+  ScanPreviewResponse,
   ScanRequest,
   ScrapeRequest,
   Settings,
@@ -38,6 +44,11 @@ export function imgFallback(e: Event, fallbackUrl: string): void {
     el.dataset.fbd = '1'
     el.src = fallbackUrl
   }
+}
+
+/** 视频流地址（HTTP Range 分片传输，<video> 直接可用） */
+export function videoUrl(path: string): string {
+  return `${BASE}/videos?path=${encodeURIComponent(path)}`
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
@@ -104,6 +115,21 @@ export const api = {
   triggerScan(body: ScanRequest) {
     return post<JobAccepted>('/scans', body)
   },
+  previewScan(body: ScanPreviewRequest) {
+    return post<ScanPreviewResponse>('/scans/preview', body)
+  },
+  commitScan(items: ScanCommitItem[]) {
+    return post<ScanCommitResponse>('/scans/commit', { items })
+  },
+
+  // 文件系统浏览
+  listFsRoots() {
+    return request<FsNode[]>('/fs/roots')
+  },
+  listFsDirs(path: string) {
+    return request<FsDirListing>(`/fs/dirs${qs({ path })}`)
+  },
+
   triggerScrape(body: ScrapeRequest) {
     return post<JobAccepted>('/scrape', body)
   },
