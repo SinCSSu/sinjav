@@ -138,6 +138,40 @@
           </el-form-item>
         </el-form>
       </el-card>
+
+      <el-card shadow="never" class="settings-card">
+        <template #header>Emby 设置</template>
+        <el-form label-width="140px" label-position="left">
+          <el-form-item label="服务地址">
+            <el-input v-model="embyBaseUrlModel" placeholder="如 http://127.0.0.1:8096" style="max-width: 500px" />
+          </el-form-item>
+          <el-form-item label="API Key">
+            <el-input
+              v-model="embyApiKeyModel"
+              placeholder="Emby 控制台「API 密钥」中生成"
+              style="max-width: 500px"
+              show-password
+            />
+          </el-form-item>
+          <el-form-item label="代理主机">
+            <el-input v-model="embyProxyHostModel" placeholder="留空直连，如 127.0.0.1" style="max-width: 300px" />
+          </el-form-item>
+          <el-form-item label="代理端口">
+            <el-input-number v-model="embyProxyPortModel" :min="0" :max="65535" />
+            <span class="hint">Emby 专用代理，与刮削代理互不影响</span>
+          </el-form-item>
+          <el-form-item>
+            <el-button :loading="testing" @click="testConnection">测试连接</el-button>
+            <span v-if="testResult" class="hint">{{ testResult }}</span>
+          </el-form-item>
+          <el-form-item>
+            <span class="hint">
+              配置后可在影片库页切换到 Emby 数据源：浏览指定媒体库、查看/修改条目元数据、触发重新刮削。
+              需先保存设置再测试连接。
+            </span>
+          </el-form-item>
+        </el-form>
+      </el-card>
     </template>
   </div>
 </template>
@@ -150,9 +184,39 @@ import type { SettingsUpdate } from '../api/types'
 
 const loading = ref(true)
 const saving = ref(false)
+const testing = ref(false)
+const testResult = ref('')
 const original = ref<SettingsUpdate>({})
 
 const form = reactive<SettingsUpdate>({})
+
+const embyBaseUrlModel = computed({
+  get: () => form.embyBaseUrl ?? '',
+  set: (v: string) => {
+    form.embyBaseUrl = v
+  },
+})
+
+const embyApiKeyModel = computed({
+  get: () => form.embyApiKey ?? '',
+  set: (v: string) => {
+    form.embyApiKey = v
+  },
+})
+
+const embyProxyHostModel = computed({
+  get: () => form.embyProxyHost ?? '',
+  set: (v: string) => {
+    form.embyProxyHost = v
+  },
+})
+
+const embyProxyPortModel = computed({
+  get: () => form.embyProxyPort ?? 0,
+  set: (v: number) => {
+    form.embyProxyPort = v
+  },
+})
 
 /** 数据源下拉选项：从 sourceOrder 解析 */
 const sourceOptions = computed(() =>
@@ -203,6 +267,7 @@ function buildUpdate(): SettingsUpdate {
 
 async function save() {
   saving.value = true
+  testResult.value = ''
   try {
     const saved = await api.updateSettings(buildUpdate())
     Object.assign(original.value, saved)
@@ -212,6 +277,21 @@ async function save() {
     ElMessage.error(e instanceof Error ? e.message : String(e))
   } finally {
     saving.value = false
+  }
+}
+
+/** 测试 Emby 连接：先保存，再调 /emby/status 验证 */
+async function testConnection() {
+  testResult.value = ''
+  testing.value = true
+  try {
+    await save()
+    const info = await api.getEmbyStatus()
+    testResult.value = `连接成功：${info.serverName || 'Emby'}（v${info.version}）`
+  } catch (e) {
+    testResult.value = e instanceof Error ? e.message : String(e)
+  } finally {
+    testing.value = false
   }
 }
 

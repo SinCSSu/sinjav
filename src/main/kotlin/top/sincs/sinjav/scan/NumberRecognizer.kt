@@ -26,15 +26,15 @@ class NumberRecognizer {
         private fun matchFc2(name: String): String? =
             FC2.find(name)?.let { "FC2-PPV-${it.groupValues[1]}" }
 
-        /** ABP-123、ABCD-001；容忍前缀修饰（[XXX], 1080p 等），字幕组后缀等；多候选取最后一个 */
+        /** ABP-123、ABCD-001；容忍前缀修饰（[XXX], 1080p 等），字幕组后缀等；多候选取最后一个。
+         *  数字部分保留原始写法（含前导零）：ABF-017 不能归一化成 ABF-17，官方番号即带零补位 */
         private val STANDARD = Regex("(?i)(?:^|[^a-z0-9])([a-z]{2,6})[-_\\s]?(\\d{2,5})(?!\\d)")
         private fun matchStandard(name: String): String? {
             var last: String? = null
             for (m in STANDARD.findAll(name)) {
                 val letters = m.groupValues[1].uppercase(Locale.ROOT)
                 if (letters in IGNORED_TOKENS) continue
-                val digits = m.groupValues[2].trimStart('0').ifEmpty { "0" }
-                last = "$letters-$digits"
+                last = "$letters-${m.groupValues[2]}"
             }
             return last
         }

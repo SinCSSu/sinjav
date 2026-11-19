@@ -12,12 +12,14 @@ class NumberRecognizerTest {
     fun `标准有码番号`() {
         assertEquals("ABP-123", r.recognize("ABP-123.mp4")!!.normalized)
         assertEquals("SSIS-456", r.recognize("SSIS_456 [1080p].mkv")!!.normalized)
-        assertEquals("ABCD-1", r.recognize("abcd-001.mp4")!!.normalized)
+        assertEquals("ABCD-001", r.recognize("abcd-001.mp4")!!.normalized)
     }
 
     @Test
-    fun `番号前导零被规范化`() {
-        assertEquals("IPX-45", r.recognize("IPX-045.mp4")!!.normalized)
+    fun `番号前导零保留原始写法`() {
+        assertEquals("IPX-045", r.recognize("IPX-045.mp4")!!.normalized)
+        assertEquals("ABF-017", r.recognize("ABF-017.mp4")!!.normalized)
+        assertEquals("ABF-086", r.recognize("ABF-086.mp4")!!.normalized)
     }
 
     @Test

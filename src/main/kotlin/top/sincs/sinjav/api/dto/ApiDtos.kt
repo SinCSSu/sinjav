@@ -96,6 +96,12 @@ data class SettingsUpdate(
     val deeplApiKey: String? = null,
     val baiduTranslateAppId: String? = null,
     val baiduTranslateSecret: String? = null,
+    // Emby 集成
+    val embyBaseUrl: String? = null,
+    val embyApiKey: String? = null,
+    /** Emby 专用 HTTP 代理（留空直连） */
+    val embyProxyHost: String? = null,
+    val embyProxyPort: Int? = null,
 )
 
 // ---------- 响应 ----------
@@ -197,6 +203,8 @@ data class SettingsDto(
     val targetDir: String, val mode: String, val namingTemplate: String, val conflictPolicy: String,
     val generateNfo: Boolean, val downloadImages: Boolean,
     val deeplApiKey: String, val baiduTranslateAppId: String, val baiduTranslateSecret: String,
+    val embyBaseUrl: String, val embyApiKey: String,
+    val embyProxyHost: String, val embyProxyPort: Int,
     val videoExtensions: String, val minFileSizeMb: Long,
 ) {
     companion object {
@@ -213,6 +221,8 @@ data class SettingsDto(
             deeplApiKey = props.scraper.deeplApiKey,
             baiduTranslateAppId = props.scraper.baiduTranslateAppId,
             baiduTranslateSecret = props.scraper.baiduTranslateSecret,
+            embyBaseUrl = props.emby.baseUrl, embyApiKey = props.emby.apiKey,
+            embyProxyHost = props.emby.proxyHost, embyProxyPort = props.emby.proxyPort,
             videoExtensions = props.scan.videoExtensions, minFileSizeMb = props.scan.minFileSizeMb,
         )
     }

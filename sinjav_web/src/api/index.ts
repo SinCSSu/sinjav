@@ -1,4 +1,9 @@
 import type {
+  EmbyItemDetail,
+  EmbyLibrary,
+  EmbyMetadataUpdate,
+  EmbyRescrapePreview,
+  EmbyPage,
   FileRecord,
   FsDirListing,
   FsNode,
@@ -54,6 +59,11 @@ export function videoUrl(path: string): string {
   return `${BASE}/videos?path=${encodeURIComponent(path)}`
 }
 
+/** Emby 条目封面（后端代理转发，不暴露 API Key） */
+export function embyPosterUrl(id: string): string {
+  return `${BASE}/emby/items/${encodeURIComponent(id)}/images/primary`
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   let res: Response
   try {
@@ -88,6 +98,10 @@ function qs(params: Record<string, string | number | undefined>): string {
 
 function post<T>(path: string, body: unknown): Promise<T> {
   return request<T>(path, { method: 'POST', body: JSON.stringify(body) })
+}
+
+function put<T>(path: string, body: unknown): Promise<T> {
+  return request<T>(path, { method: 'PUT', body: JSON.stringify(body) })
 }
 
 export interface MovieQuery {
@@ -209,5 +223,30 @@ export const api = {
   },
   updateSettings(body: SettingsUpdate) {
     return request<Settings>('/settings', { method: 'PUT', body: JSON.stringify(body) })
+  },
+
+  // Emby（实时代理，不落库）
+  getEmbyStatus() {
+    return request<{ serverName: string; version: string }>('/emby/status')
+  },
+  listEmbyLibraries() {
+    return request<EmbyLibrary[]>('/emby/libraries')
+  },
+  listEmbyItems(query: { libraryId: string; page?: number; size?: number; keyword?: string }) {
+    return request<EmbyPage>(
+      `/emby/items${qs({ libraryId: query.libraryId, page: query.page, size: query.size, keyword: query.keyword })}`,
+    )
+  },
+  getEmbyItem(id: string) {
+    return request<EmbyItemDetail>(`/emby/items/${encodeURIComponent(id)}`)
+  },
+  updateEmbyMetadata(id: string, body: EmbyMetadataUpdate) {
+    return put<EmbyItemDetail>(`/emby/items/${encodeURIComponent(id)}/metadata`, body)
+  },
+  /** 重新刮削预览：识别番号（自动识别失败时可手动指定 number）→ 本应用刮削 → 返回刮削前后对比 */
+  previewEmbyRescrape(id: string, number?: string) {
+    return post<EmbyRescrapePreview>(`/emby/items/${encodeURIComponent(id)}/rescrape/preview`, {
+      number: number?.trim() || undefined,
+    })
   },
 }

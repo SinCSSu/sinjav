@@ -5,9 +5,22 @@
     </div>
 
     <div class="toolbar">
+      <el-radio-group v-model="source" @change="switchSource">
+        <el-radio-button value="local">本地</el-radio-button>
+        <el-radio-button value="emby">Emby</el-radio-button>
+      </el-radio-group>
+      <el-select
+        v-if="source === 'emby'"
+        v-model="libraryId"
+        placeholder="选择 Emby 媒体库"
+        style="width: 200px"
+        @change="search"
+      >
+        <el-option v-for="lib in libraries" :key="lib.id" :label="lib.name" :value="lib.id" />
+      </el-select>
       <el-input
         v-model="keyword"
-        placeholder="按番号或标题搜索"
+        :placeholder="source === 'emby' ? '按标题搜索' : '按番号或标题搜索'"
         clearable
         style="width: 260px"
         @keyup.enter="search"
@@ -17,64 +30,99 @@
           <el-button :icon="SearchIcon" @click="search" />
         </template>
       </el-input>
-      <el-select v-model="status" clearable placeholder="刮削状态" style="width: 130px" @change="search">
-        <el-option label="待刮削" value="pending" />
-        <el-option label="已刮削" value="scraped" />
-        <el-option label="刮削失败" value="failed" />
-      </el-select>
-      <el-select v-model="sort" style="width: 130px" @change="search">
-        <el-option label="入库时间" value="created_at" />
-        <el-option label="发行日期" value="release_date" />
-        <el-option label="番号" value="number" />
-      </el-select>
-      <el-button :icon="order === 'desc' ? SortDownIcon : SortUpIcon" @click="toggleOrder">
-        {{ order === 'desc' ? '降序' : '升序' }}
-      </el-button>
+      <template v-if="source === 'local'">
+        <el-select v-model="status" clearable placeholder="刮削状态" style="width: 130px" @change="search">
+          <el-option label="待刮削" value="pending" />
+          <el-option label="已刮削" value="scraped" />
+          <el-option label="刮削失败" value="failed" />
+        </el-select>
+        <el-select v-model="sort" style="width: 130px" @change="search">
+          <el-option label="入库时间" value="created_at" />
+          <el-option label="发行日期" value="release_date" />
+          <el-option label="番号" value="number" />
+        </el-select>
+        <el-button :icon="order === 'desc' ? SortDownIcon : SortUpIcon" @click="toggleOrder">
+          {{ order === 'desc' ? '降序' : '升序' }}
+        </el-button>
+      </template>
     </div>
 
-    <el-empty v-if="items.length === 0" description="暂无影片数据，请先执行扫描" />
-    <div v-else class="movie-grid">
-      <div v-for="m in items" :key="m.number" class="movie-card" @click="openDetail(m.number)">
-        <div class="cover">
-          <img
-            v-if="m.coverUrl"
-            :src="localImg(m.number, 'poster.jpg')"
-            loading="lazy"
-            alt=""
-            @error="imgFallback($event, imgProxy(m.coverUrl))"
-          />
-          <div v-else class="cover-placeholder">{{ m.number }}</div>
-          <el-tag
-            class="status-badge"
-            :type="movieStatusTagTypes[m.status]"
-            size="small"
-          >
-            {{ movieStatusLabels[m.status] }}
-          </el-tag>
-          <el-button
-            class="delete-btn"
-            :icon="DeleteIcon"
-            circle
-            size="small"
-            type="danger"
-            title="删除记录"
-            @click.stop="removeMovie(m)"
-          />
-        </div>
-        <div class="info">
-          <div class="number">{{ m.number }}</div>
-          <div class="title" :title="m.title ?? ''">{{ m.title || '—' }}</div>
-          <div v-if="m.titleOrig && m.titleOrig !== m.title" class="title-orig" :title="m.titleOrig">
-            {{ m.titleOrig }}
+    <el-alert
+      v-if="source === 'emby' && embyError"
+      :title="embyError"
+      type="error"
+      show-icon
+      :closable="false"
+      class="emby-error"
+    />
+
+    <el-empty v-if="!embyError && (source === 'emby' ? embyItems : items).length === 0" :description="emptyText" />
+    <template v-else-if="!embyError">
+      <!-- 本地影片卡片 -->
+      <div v-if="source === 'local'" class="movie-grid">
+        <div v-for="m in items" :key="m.number" class="movie-card" @click="openDetail(m.number)">
+          <div class="cover">
+            <img
+              v-if="m.coverUrl"
+              :src="localImg(m.number, 'poster.jpg')"
+              loading="lazy"
+              alt=""
+              @error="imgFallback($event, imgProxy(m.coverUrl))"
+            />
+            <div v-else class="cover-placeholder">{{ m.number }}</div>
+            <el-tag
+              class="status-badge"
+              :type="movieStatusTagTypes[m.status]"
+              size="small"
+            >
+              {{ movieStatusLabels[m.status] }}
+            </el-tag>
+            <el-button
+              class="delete-btn"
+              :icon="DeleteIcon"
+              circle
+              size="small"
+              type="danger"
+              title="删除记录"
+              @click.stop="removeMovie(m)"
+            />
           </div>
-          <div class="meta">
-            <span class="ellipsis">{{ m.actresses.join(' / ') }}</span>
-            <span v-if="m.releaseDate">{{ m.releaseDate }}</span>
+          <div class="info">
+            <div class="number">{{ m.number }}</div>
+            <div class="title" :title="m.title ?? ''">{{ m.title || '—' }}</div>
+            <div v-if="m.titleOrig && m.titleOrig !== m.title" class="title-orig" :title="m.titleOrig">
+              {{ m.titleOrig }}
+            </div>
+            <div class="meta">
+              <span class="ellipsis">{{ m.actresses.join(' / ') }}</span>
+              <span v-if="m.releaseDate">{{ m.releaseDate }}</span>
+            </div>
+            <div v-if="m.plot" class="plot" :title="m.plot">{{ m.plot }}</div>
           </div>
-          <div v-if="m.plot" class="plot" :title="m.plot">{{ m.plot }}</div>
         </div>
       </div>
-    </div>
+
+      <!-- Emby 条目卡片 -->
+      <div v-else class="movie-grid">
+        <div v-for="item in embyItems" :key="item.id" class="movie-card" @click="openEmbyDetail(item.id)">
+          <div class="cover">
+            <img v-if="item.hasImage" :src="embyPosterUrl(item.id)" loading="lazy" alt="" />
+            <div v-else class="cover-placeholder">{{ item.name }}</div>
+            <el-tag class="status-badge" size="small" type="primary" effect="dark">Emby</el-tag>
+          </div>
+          <div class="info">
+            <div class="number ellipsis" :title="item.name">{{ item.name }}</div>
+            <div v-if="item.originalTitle && item.originalTitle !== item.name" class="title-orig" :title="item.originalTitle">
+              {{ item.originalTitle }}
+            </div>
+            <div class="meta">
+              <span v-if="item.productionYear">{{ item.productionYear }}</span>
+              <span v-if="item.premiereDate">{{ item.premiereDate.slice(0, 10) }}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </template>
 
     <div v-if="totalPages > 1" class="pager">
       <el-pagination
@@ -83,11 +131,12 @@
         :total="total"
         layout="total, prev, pager, next, jumper"
         background
-        @current-change="load"
+        @current-change="source === 'emby' ? loadEmby() : load()"
       />
     </div>
 
     <MovieDetailDrawer v-model="detailVisible" :number="detailNumber" />
+    <EmbyItemDrawer v-model="embyDetailVisible" :item-id="embyDetailId" />
   </div>
 </template>
 
@@ -95,10 +144,13 @@
 import { computed, onMounted, ref } from 'vue'
 import { Delete as DeleteIcon, Search as SearchIcon, SortDown as SortDownIcon, SortUp as SortUpIcon } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { api, imgFallback, imgProxy, localImg } from '../api'
-import type { MovieSort, MovieStatus, MovieSummary } from '../api/types'
+import { api, embyPosterUrl, imgFallback, imgProxy, localImg } from '../api'
+import type { EmbyItemSummary, EmbyLibrary, MovieSort, MovieStatus, MovieSummary } from '../api/types'
 import { movieStatusLabels, movieStatusTagTypes } from '../utils'
 import MovieDetailDrawer from '../components/MovieDetailDrawer.vue'
+import EmbyItemDrawer from '../components/EmbyItemDrawer.vue'
+
+const source = ref<'local' | 'emby'>('local')
 
 const keyword = ref('')
 const status = ref<MovieStatus | ''>('')
@@ -108,15 +160,81 @@ const page = ref(1)
 const size = ref(24)
 const total = ref(0)
 const items = ref<MovieSummary[]>([])
+const embyItems = ref<EmbyItemSummary[]>([])
+
+// Emby 数据源（实时代理，不落库）
+const libraries = ref<EmbyLibrary[]>([])
+const libraryId = ref('')
+const embyError = ref('')
 
 const totalPages = computed(() => Math.ceil(total.value / size.value))
+const emptyText = computed(() =>
+  source.value === 'emby'
+    ? 'Emby 媒体库暂无条目，请选择其他媒体库'
+    : '暂无影片数据，请先执行扫描',
+)
 
 const detailVisible = ref(false)
 const detailNumber = ref('')
+const embyDetailVisible = ref(false)
+const embyDetailId = ref('')
 
 function search() {
   page.value = 1
-  load()
+  if (source.value === 'emby') loadEmby()
+  else load()
+}
+
+function switchSource() {
+  page.value = 1
+  keyword.value = ''
+  embyError.value = ''
+  items.value = []
+  embyItems.value = []
+  total.value = 0
+  if (source.value === 'emby') {
+    loadLibraries()
+  } else {
+    load()
+  }
+}
+
+async function loadLibraries() {
+  embyError.value = ''
+  try {
+    libraries.value = await api.listEmbyLibraries()
+    if (libraries.value.length === 0) {
+      embyError.value = 'Emby 中没有可用媒体库'
+      return
+    }
+    if (!libraryId.value || !libraries.value.some((l) => l.id === libraryId.value)) {
+      libraryId.value = libraries.value[0].id
+    }
+    loadEmby()
+  } catch (e) {
+    embyError.value = e instanceof Error ? e.message : String(e)
+    items.value = []
+    total.value = 0
+  }
+}
+
+async function loadEmby() {
+  if (!libraryId.value) return
+  try {
+    const result = await api.listEmbyItems({
+      libraryId: libraryId.value,
+      page: page.value,
+      size: size.value,
+      keyword: keyword.value.trim() || undefined,
+    })
+    embyItems.value = result.items
+    total.value = result.total
+    embyError.value = ''
+  } catch (e) {
+    items.value = []
+    total.value = 0
+    embyError.value = e instanceof Error ? e.message : String(e)
+  }
 }
 
 function toggleOrder() {
@@ -148,6 +266,11 @@ function openDetail(number: string) {
   detailVisible.value = true
 }
 
+function openEmbyDetail(id: string) {
+  embyDetailId.value = id
+  embyDetailVisible.value = true
+}
+
 async function removeMovie(m: MovieSummary) {
   try {
     await ElMessageBox.confirm(
@@ -171,6 +294,9 @@ onMounted(load)
 </script>
 
 <style scoped>
+.emby-error {
+  margin-bottom: 14px;
+}
 .movie-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));

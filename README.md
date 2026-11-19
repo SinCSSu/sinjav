@@ -12,6 +12,7 @@
 2. **刮削**：并发请求 JavBus / JavDB / MissAV，按 `javbus → javdb → missav` 的优先级合并字段。标题、简介、标签会优先用 DeepL 翻译，其次百度，最后兜底 Google 免费接口；日文汉字用 opencc 转简体，原标题保留在 `title_orig`。
 3. **整理**：按模板（默认 `{number}/{number} - {title}`）生成目录和文件名，支持硬链接 / 软链接 / 移动 / 复制四种模式，冲突可选跳过 / 覆盖 / 重命名。同时写出 `movie.nfo` 和封面、剧照。
 4. **管理**：Web 界面里浏览影片、查看文件记录、跟踪异步任务进度、在线播放（HTTP Range 分片，只读源文件），以及修改运行时配置。
+5. **Emby 集成**：在设置页配置 Emby 服务地址和 API Key 后，影片库页可切换到 Emby 数据源，浏览指定媒体库的条目；支持读取/修改条目元数据（标题、简介、类别、标签等）。重新刮削指：从 Emby 条目的文件名/原标题/标题识别番号（识别链依次尝试；媒体整理良好时文件名即番号，无番号则是录入的标题），用本应用刮削管线刮取元数据，先展示刮削前后差异、勾选确认后再回写 Emby（不触发 Emby 自身刮削）。基础版走实时代理（不落库），封面经后端代理转发、不暴露 API Key。
 
 所有操作都由 API 或界面手动触发，**没有定时任务**，也不会在后台偷偷扫描你的磁盘。
 
@@ -118,6 +119,7 @@ sinjav/
 - **触发**：`POST /scans`、`/scans/preview`、`/scans/commit`、`/scrape`、`/organize`、`/organize/preview`、`/pipeline`
 - **查询**：`GET /movies`、`/movies/{number}`、`/file-records`、`/organize/records`、`/jobs`、`/jobs/{jobId}`
 - **配置**：`GET|PUT /settings`、`DELETE /movies/{number}`
+- **Emby**：`GET /emby/status`、`/emby/libraries`、`/emby/items`、`/emby/items/{id}`、`PUT /emby/items/{id}/metadata`、`POST /emby/items/{id}/rescrape/preview`、`GET /emby/items/{id}/images/primary`
 - **文件**：`GET /fs/roots`、`/fs/dirs`、`/videos`（支持 Range 播放）、`/images`（域名白名单代理）
 
 完整请求/响应结构见 `docs/openapi.yaml`。

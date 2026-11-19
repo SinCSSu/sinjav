@@ -19,7 +19,7 @@ class SettingsService(
     private val log = LoggerFactory.getLogger(SettingsService::class.java)
 
     /** 敏感配置项：日志中打码 */
-    private val sensitiveKeys = setOf("javdbCookie", "deeplApiKey", "baiduTranslateAppId", "baiduTranslateSecret")
+    private val sensitiveKeys = setOf("javdbCookie", "deeplApiKey", "baiduTranslateAppId", "baiduTranslateSecret", "embyApiKey")
 
     @PostConstruct
     fun applyFromDb() {
@@ -51,6 +51,10 @@ class SettingsService(
             u.deeplApiKey?.let { add("deeplApiKey" to it) }
             u.baiduTranslateAppId?.let { add("baiduTranslateAppId" to it) }
             u.baiduTranslateSecret?.let { add("baiduTranslateSecret" to it) }
+            u.embyBaseUrl?.let { add("embyBaseUrl" to it) }
+            u.embyApiKey?.let { add("embyApiKey" to it) }
+            u.embyProxyHost?.let { add("embyProxyHost" to it) }
+            u.embyProxyPort?.let { add("embyProxyPort" to it.toString()) }
         }
         if (changes.isNotEmpty()) {
             log.info(
@@ -92,6 +96,10 @@ class SettingsService(
             "deeplApiKey" -> props.scraper.deeplApiKey = value
             "baiduTranslateAppId" -> props.scraper.baiduTranslateAppId = value
             "baiduTranslateSecret" -> props.scraper.baiduTranslateSecret = value
+            "embyBaseUrl" -> props.emby.baseUrl = value
+            "embyApiKey" -> props.emby.apiKey = value
+            "embyProxyHost" -> props.emby.proxyHost = value
+            "embyProxyPort" -> props.emby.proxyPort = value.toIntOrNull() ?: 0
         }
     }
 }

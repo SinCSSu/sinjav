@@ -45,6 +45,14 @@ data class ScanProps(
     var minFileSizeMb: Long = 50,
 )
 
+/** Emby 集成：服务地址（如 http://127.0.0.1:8096）+ API Key（控制台「API 密钥」生成）+ 独立代理（留空直连） */
+data class EmbyProps(
+    var baseUrl: String = "",
+    var apiKey: String = "",
+    var proxyHost: String = "",
+    var proxyPort: Int = 0,
+)
+
 data class AsyncProps(
     var jobPoolSize: Int = 2,
     var jobPoolQueueCapacity: Int = 100,
@@ -60,6 +68,7 @@ data class AppProperties(
     val scraper: ScraperProps = ScraperProps(),
     val organize: OrganizeProps = OrganizeProps(),
     val scan: ScanProps = ScanProps(),
+    val emby: EmbyProps = EmbyProps(),
     val async: AsyncProps = AsyncProps(),
     val images: ImageProps = ImageProps(),
 ) {

@@ -252,9 +252,79 @@ export type SettingsUpdate = {
   deeplApiKey?: string
   baiduTranslateAppId?: string
   baiduTranslateSecret?: string
+  /** Emby 集成：服务地址 + API Key + 独立代理（留空直连） */
+  embyBaseUrl?: string
+  embyApiKey?: string
+  embyProxyHost?: string
+  embyProxyPort?: number
   /** 只读：扫描全局配置（GET 返回，PUT 忽略），供扫描弹窗高级选项回填 */
   videoExtensions?: string
   minFileSizeMb?: number
 }
 
 export type Settings = SettingsUpdate
+
+// ---------- Emby ----------
+
+export interface EmbyLibrary {
+  id: string
+  name: string
+  collectionType?: string | null
+}
+
+export interface EmbyItemSummary {
+  id: string
+  name: string
+  originalTitle?: string | null
+  productionYear?: number | null
+  premiereDate?: string | null
+  path?: string | null
+  /** 是否有主图（封面统一走 /emby/items/{id}/images/primary 代理） */
+  hasImage: boolean
+}
+
+export interface EmbyPage {
+  page: number
+  size: number
+  total: number
+  items: EmbyItemSummary[]
+}
+
+export interface EmbyItemDetail extends EmbyItemSummary {
+  overview?: string | null
+  genres: string[]
+  studios: string[]
+  tags: string[]
+  officialRating?: string | null
+  communityRating?: number | null
+  runtimeMin?: number | null
+  providerIds: Record<string, string>
+  dateCreated?: string | null
+}
+
+/** 元数据修改请求：仅提交需要修改的字段 */
+export interface EmbyMetadataUpdate {
+  name?: string
+  originalTitle?: string
+  overview?: string
+  genres?: string[]
+  studios?: string[]
+  tags?: string[]
+  premiereDate?: string
+  productionYear?: number
+  officialRating?: string
+  communityRating?: number
+}
+
+/** 本地刮削预览：刮削前后元数据对比，确认后再应用 */
+export interface EmbyRescrapePreview {
+  itemId: string
+  /** 从条目文件名/原标题/标题识别出的番号 */
+  matchedNumber: string
+  /** 刮削数据源 */
+  source: string
+  /** 刮削前的当前 Emby 元数据 */
+  current: EmbyItemDetail
+  /** 刮削得到的元数据（待确认应用） */
+  proposed: EmbyMetadataUpdate
+}

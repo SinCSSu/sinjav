@@ -30,6 +30,8 @@ tags:
     description: 异步任务状态查询
   - name: settings
     description: 运行时配置
+  - name: emby
+    description: Emby 集成（媒体库浏览、元数据编辑、重新刮削）
 
 paths:
   /api/v1/fs/roots:
@@ -561,6 +563,138 @@ paths:
         '400':
           $ref: '#/components/responses/ValidationError'
 
+  /api/v1/emby/status:
+    get:
+      tags: [emby]
+      operationId: getEmbyStatus
+      summary: 测试 Emby 连接（返回服务器名称与版本）
+      responses:
+        '200':
+          description: 服务器信息
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  serverName: { type: string }
+                  version: { type: string }
+
+  /api/v1/emby/libraries:
+    get:
+      tags: [emby]
+      operationId: listEmbyLibraries
+      summary: Emby 媒体库列表
+      responses:
+        '200':
+          description: 媒体库列表
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/EmbyLibrary'
+
+  /api/v1/emby/items:
+    get:
+      tags: [emby]
+      operationId: listEmbyItems
+      summary: 分页列出指定媒体库内的电影条目（实时代理，不落库）
+      parameters:
+        - { name: libraryId, in: query, required: true, schema: { type: string } }
+        - { name: page, in: query, schema: { type: integer, default: 1 } }
+        - { name: size, in: query, schema: { type: integer, default: 24 } }
+        - { name: keyword, in: query, description: 标题搜索, schema: { type: string } }
+      responses:
+        '200':
+          description: 条目分页
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmbyPage'
+
+  /api/v1/emby/items/{id}:
+    get:
+      tags: [emby]
+      operationId: getEmbyItem
+      summary: 条目完整元数据
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: 条目详情
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmbyItem'
+
+  /api/v1/emby/items/{id}/metadata:
+    put:
+      tags: [emby]
+      operationId: updateEmbyMetadata
+      summary: 修改条目元数据（读取→覆盖→回写 Emby），返回更新后的完整条目
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EmbyMetadataUpdate'
+      responses:
+        '200':
+          description: 更新后的条目
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmbyItem'
+
+  /api/v1/emby/items/{id}/rescrape/preview:
+    post:
+      tags: [emby]
+      operationId: previewEmbyRescrape
+      summary: 重新刮削预览（本地管线）：识别番号 → 本应用刮削 → 返回刮削前后对比（不推送，同步执行）
+      description: |
+        从条目文件名/原标题/标题提取番号（识别链依次尝试；请求体 number 非空时用手动番号替代识别），
+        调用本项目刮削管线（多数据源+翻译），返回「当前 Emby 元数据 + 刮削结果」供前端展示差异并
+        勾选确认；确认后由 PUT /emby/items/{id}/metadata 应用。同步执行，受刮削限速影响可能耗时数十秒。
+        无法识别番号返回 400；所有数据源刮削失败返回 500。
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                number:
+                  type: string
+                  description: 手动指定番号（自动识别失败时由用户输入）
+      responses:
+        '200':
+          description: 刮削前后对比
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmbyRescrapePreview'
+
+  /api/v1/emby/items/{id}/images/primary:
+    get:
+      tags: [emby]
+      operationId: getEmbyPrimaryImage
+      summary: 封面代理（后端转发 Emby 主图，不暴露 API Key；无图返回 404）
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+        - { name: maxWidth, in: query, schema: { type: integer, default: 300 } }
+      responses:
+        '200':
+          description: 图片二进制
+          content:
+            image/jpeg:
+              schema: { type: string, format: binary }
+        '404':
+          description: 条目无主图
+
 components:
   parameters:
     Page:
@@ -984,6 +1118,12 @@ components:
           type: boolean
         downloadImages:
           type: boolean
+        embyBaseUrl:
+          type: string
+          description: Emby 服务地址（如 http://127.0.0.1:8096）
+        embyApiKey:
+          type: string
+          description: Emby API Key（控制台「API 密钥」生成）
       required: []
 
     # ---------- 任务 ----------
@@ -1275,6 +1415,90 @@ components:
         baiduTranslateSecret:
           type: string
           description: 百度翻译密钥
+        embyBaseUrl:
+          type: string
+          description: Emby 服务地址（如 http://127.0.0.1:8096）
+        embyApiKey:
+          type: string
+          description: Emby API Key
+
+    # ---------- Emby ----------
+    EmbyLibrary:
+      type: object
+      properties:
+        id: { type: string, description: 媒体库根节点 Id }
+        name: { type: string }
+        collectionType: { type: string, nullable: true }
+
+    EmbyItemSummary:
+      type: object
+      properties:
+        id: { type: string }
+        name: { type: string }
+        originalTitle: { type: string, nullable: true }
+        productionYear: { type: integer, nullable: true }
+        premiereDate: { type: string, nullable: true }
+        path: { type: string, nullable: true }
+        hasImage: { type: boolean, description: 是否有主图（封面走代理接口） }
+
+    EmbyPage:
+      type: object
+      properties:
+        page: { type: integer }
+        size: { type: integer }
+        total: { type: integer, format: int64 }
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/EmbyItemSummary' }
+
+    EmbyItem:
+      type: object
+      properties:
+        id: { type: string }
+        name: { type: string }
+        originalTitle: { type: string, nullable: true }
+        overview: { type: string, nullable: true }
+        genres: { type: array, items: { type: string } }
+        studios: { type: array, items: { type: string } }
+        tags: { type: array, items: { type: string } }
+        premiereDate: { type: string, nullable: true }
+        productionYear: { type: integer, nullable: true }
+        officialRating: { type: string, nullable: true }
+        communityRating: { type: number, nullable: true }
+        runtimeMin: { type: integer, nullable: true }
+        path: { type: string, nullable: true }
+        providerIds: { type: object, additionalProperties: { type: string } }
+        dateCreated: { type: string, nullable: true }
+        hasImage: { type: boolean }
+
+    EmbyMetadataUpdate:
+      type: object
+      description: 元数据修改（仅提交需要修改的字段）
+      properties:
+        name: { type: string }
+        originalTitle: { type: string }
+        overview: { type: string }
+        genres: { type: array, items: { type: string } }
+        studios: { type: array, items: { type: string } }
+        tags: { type: array, items: { type: string } }
+        premiereDate: { type: string }
+        productionYear: { type: integer }
+        officialRating: { type: string }
+        communityRating: { type: number }
+
+    EmbyRescrapePreview:
+      type: object
+      description: 本地刮削预览：刮削前后元数据对比，确认后再应用
+      properties:
+        itemId: { type: string }
+        matchedNumber: { type: string, description: 从条目文件名/原标题/标题识别出的番号（或手动输入） }
+        source: { type: string, description: 刮削数据源 }
+        current:
+          $ref: '#/components/schemas/EmbyItem'
+          description: 刮削前的当前 Emby 元数据
+        proposed:
+          $ref: '#/components/schemas/EmbyMetadataUpdate'
+          description: 刮削得到的元数据（待确认应用）
 
     # ---------- 通用 ----------
     PageMeta:
