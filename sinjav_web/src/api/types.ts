@@ -7,8 +7,7 @@ export type RecognizeStatus = 'recognized' | 'unrecognized' | 'filtered'
 export type OrganizeStatus = 'pending' | 'organized' | 'failed' | 'skipped'
 export type LinkMode = 'hardlink' | 'symlink' | 'move' | 'copy'
 export type ConflictPolicy = 'skip' | 'overwrite' | 'rename'
-export type ScraperStrategy = 'fallback' | 'merge'
-export type ScraperSource = 'javbus' | 'javdb'
+export type ScraperSource = 'javbus' | 'javdb' | 'missav'
 export type MovieSort = 'release_date' | 'number' | 'created_at'
 
 export interface PageMeta {
@@ -24,6 +23,8 @@ export type Paged<T> = PageMeta & { items: T[] }
 export interface MovieSummary {
   number: string
   title?: string | null
+  /** 原名（源站原始标题，日文/繁体） */
+  titleOrig?: string | null
   releaseDate?: string | null
   maker?: string | null
   actresses: string[]
@@ -41,6 +42,7 @@ export interface Movie extends MovieSummary {
   series?: string | null
   durationMin?: number | null
   previewUrls: string[]
+  genres: string[]
   plot?: string | null
   source?: ScraperSource | 'merged' | null
   failReason?: string | null
@@ -153,7 +155,6 @@ export interface ScanCommitResponse {
 export interface ScrapeRequest {
   numbers?: string[]
   sources?: ScraperSource[]
-  strategy?: ScraperStrategy
 }
 
 export interface OrganizeItemRequest {
@@ -227,13 +228,20 @@ export interface PipelineRequest {
 
 export type SettingsUpdate = {
   sourceOrder?: string
-  strategy?: ScraperStrategy
   userAgent?: string
   javdbCookie?: string
   proxyHost?: string
   proxyPort?: number
+  /** CF 过盾代理地址（如 trawl MITM http://127.0.0.1:8192）；空则全部走全局代理/直连 */
+  cfProxyUrl?: string
+  /** 需要 CF 过盾的数据源 id，逗号分隔（如 "javdb"） */
+  cfProxySources?: string
   requestIntervalMs?: number
   concurrency?: number
+  /** 普通请求超时 (ms) */
+  timeoutMs?: number
+  /** CF 过盾请求超时 (ms)：需等待 CF 挑战，通常更长 */
+  cfTimeoutMs?: number
   targetDir?: string
   mode?: LinkMode
   namingTemplate?: string

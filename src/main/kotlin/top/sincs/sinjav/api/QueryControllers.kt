@@ -74,6 +74,8 @@ class MovieController(
         if (!movies.delete(number)) throw NoSuchElementException("影片不存在: $number")
         fileRecords.deleteByNumber(number)
         imageStore.delete(number)
+        org.slf4j.LoggerFactory.getLogger(MovieController::class.java)
+            .info("影片记录已删除 {}（关联文件记录与本地图片缓存一并清理）", number)
         return ResponseEntity.noContent().build()
     }
 }

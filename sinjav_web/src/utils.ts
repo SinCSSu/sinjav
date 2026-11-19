@@ -5,7 +5,6 @@ import type {
   MovieStatus,
   OrganizeStatus,
   RecognizeStatus,
-  ScraperStrategy,
 } from './api/types'
 
 type TagType = 'primary' | 'success' | 'warning' | 'danger' | 'info'
@@ -74,11 +73,6 @@ export const linkModeLabels: Record<LinkMode, string> = {
   symlink: '软链接',
   move: '移动',
   copy: '复制',
-}
-
-export const strategyLabels: Record<ScraperStrategy, string> = {
-  fallback: '主备回退',
-  merge: '字段合并',
 }
 
 export function formatFileSize(bytes: number): string {

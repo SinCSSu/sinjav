@@ -18,20 +18,32 @@ class ImageStore(
 
     private val log = LoggerFactory.getLogger(ImageStore::class.java)
 
-    fun downloadAll(number: String, coverUrl: String?, previewUrls: List<String>) {
+    /**
+     * 下载封面/剧照。source 为整体来源（单源时）；coverSource/previewSource 为多源合并时
+     * 各图片字段的实际来源数据源（为空回退 source）。下载路由按设置的过盾数据源生效。
+     */
+    fun downloadAll(
+        number: String,
+        coverUrl: String?,
+        previewUrls: List<String>,
+        source: String? = null,
+        coverSource: String? = null,
+        previewSource: String? = null,
+    ) {
         if (!props.images.download) return
         val dir = Path.of(props.images.dir).resolve(number)
         runCatching { Files.createDirectories(dir) }
             .onFailure { log.warn("创建图片目录失败 {}: {}", dir, it.message); return }
 
         coverUrl?.let { url ->
-            runCatching { Files.write(dir.resolve("poster.jpg"), http.download(url)) }
+            runCatching { Files.write(dir.resolve("poster.jpg"), http.download(url, source = coverSource ?: source)) }
                 .onFailure { log.warn("下载封面到本地失败 {}: {}", url, it.message) }
         }
         previewUrls.forEachIndexed { i, url ->
-            runCatching { Files.write(dir.resolve("preview${i + 1}.jpg"), http.download(url)) }
+            runCatching { Files.write(dir.resolve("preview${i + 1}.jpg"), http.download(url, source = previewSource ?: source)) }
                 .onFailure { log.warn("下载剧照到本地失败 {}: {}", url, it.message) }
         }
+        log.info("图片已缓存 番号={} 目录={} 封面={} 剧照={}张", number, dir, coverUrl != null, previewUrls.size)
     }
 
     /** 本地图片相对 Web 路径（/local-images/{番号}/文件名），不存在时由前端回退到代理 */

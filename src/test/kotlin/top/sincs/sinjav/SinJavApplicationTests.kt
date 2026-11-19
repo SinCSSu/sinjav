@@ -58,7 +58,7 @@ class SinJavApplicationTests {
     fun `设置接口可用`() {
         val resp = rest.getForEntity("/api/v1/settings", Map::class.java)
         assertEquals(HttpStatus.OK, resp.statusCode)
-        assertEquals("javbus, javdb", resp.body?.get("sourceOrder"))
+        assertEquals("javbus, javdb, missav", resp.body?.get("sourceOrder"))
         // 扫描全局配置（供扫描弹窗高级选项回填默认值）
         assertEquals("mp4, mkv, avi, wmv, iso, rmvb, ts, m2ts, mov, flv", resp.body?.get("videoExtensions"))
         assertEquals(50L, ((resp.body?.get("minFileSizeMb") as Number).toLong()))

@@ -91,6 +91,9 @@ class MovieRepository(private val jdbc: NamedParameterJdbcTemplate) {
             """, params,
         )
         val movieId = findByNumber(number)?.id ?: return
+        // 全字段覆盖语义：先清除旧关联再插入，避免重刮/多源合并时新旧标签（原语言 + 简体）并存
+        jdbc.update("DELETE FROM movie_actresses WHERE movie_id = :id", mapOf("id" to movieId))
+        jdbc.update("DELETE FROM movie_genres WHERE movie_id = :id", mapOf("id" to movieId))
         actresses.forEach { name -> linkActress(movieId, name) }
         genres.forEach { name -> linkGenre(movieId, name) }
     }

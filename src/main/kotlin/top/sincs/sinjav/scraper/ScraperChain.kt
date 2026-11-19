@@ -3,11 +3,12 @@ package top.sincs.sinjav.scraper
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Component
 import top.sincs.sinjav.config.AppProperties
+import java.util.Collections
+import java.util.concurrent.Executors
 
 /**
- * 刮削策略链：
- * - fallback：按 source-order 依次尝试，返回第一个成功源
- * - merge：收集所有成功源，字段合并（顺序靠前的源优先）
+ * 刮削策略链：对单个影片，所有数据源并发请求（HTTP 层仍受 request-interval-ms 全局限速约束）。
+ * 每个刮削字段按 source-order 优先级从高到低取第一个非空值；列表字段（女优/类别/剧照）取并集。
  */
 @Component
 class ScraperChain(
@@ -19,38 +20,48 @@ class ScraperChain(
     private val byId = scrapers.associateBy { it.id() }
 
     @Throws(ScrapeException::class)
-    fun scrape(number: String, sources: List<String>? = null, strategy: String? = null): MovieMetadata =
-        scrapeWithSource(number, sources, strategy).second
+    fun scrape(number: String, sources: List<String>? = null): MovieMetadata =
+        scrapeWithSource(number, sources).second
 
-    /** 返回 (来源标识, 元数据) */
+    /** 返回 (来源标识, 元数据)；多源成功时来源标识为 "merged" */
     @Throws(ScrapeException::class)
-    fun scrapeWithSource(number: String, sources: List<String>? = null, strategy: String? = null): Pair<String, MovieMetadata> {
+    fun scrapeWithSource(number: String, sources: List<String>? = null): Pair<String, MovieMetadata> {
         val order = (sources ?: props.sourceOrderList()).filter { byId.containsKey(it) }
         if (order.isEmpty()) throw ScrapeException("无可用刮削源，可用源: ${byId.keys}")
-        val mode = strategy ?: props.scraper.strategy
 
-        val results = mutableListOf<Pair<String, MovieMetadata>>() // (sourceId, metadata)
-        val errors = mutableListOf<String>()
-        for (id in order) {
-            try {
-                results += id to byId.getValue(id).scrape(number)
-                if (mode != "merge") break
-            } catch (e: Exception) {
-                log.warn("刮削源 {} 失败 {}: {}", id, number, e.message)
-                errors += "${id}: ${e.message}"
-            }
+        val results = Collections.synchronizedList(mutableListOf<Pair<String, MovieMetadata>>()) // (sourceId, metadata)
+        val errors = Collections.synchronizedList(mutableListOf<String>())
+        val executor = Executors.newFixedThreadPool(order.size.coerceAtLeast(1))
+        try {
+            order.map { id ->
+                executor.submit {
+                    try {
+                        results += id to byId.getValue(id).scrape(number)
+                    } catch (e: Exception) {
+                        // 部分异常 message 为 null（如无消息的 NPE），带上异常类名便于诊断
+                        val reason = e.message?.takeIf { it.isNotBlank() } ?: "${e::class.simpleName}（无错误信息）"
+                        log.warn("刮削源 {} 失败 {}: {}", id, number, reason, e)
+                        errors += "${id}: $reason"
+                    }
+                }
+            }.forEach { it.get() } // 等待全部数据源完成
+        } finally {
+            executor.shutdown()
         }
         if (results.isEmpty()) throw ScrapeException("全部刮削源失败（${errors.joinToString("; ")}）")
-        return if (mode == "merge" && results.size > 1) "merged" to merge(results, order)
-        else results.first()
+        // 每个字段按优先级从高到低取第一个非空值；仅单源成功时直接返回该源结果
+        return if (results.size > 1) "merged" to merge(results, order)
+        else results.sortedBy { order.indexOf(it.first) }.first()
+            .let { (id, meta) -> id to meta.copy(coverSource = id, previewSource = id) }
     }
 
-    /** 字段合并：按 source-order 中靠前的源优先，非空字段不覆盖 */
+    /** 字段合并：按 source-order 中靠前的源优先，非空字段不覆盖；图片字段记录实际来源数据源 */
     private fun merge(results: List<Pair<String, MovieMetadata>>, order: List<String>): MovieMetadata {
-        val sorted = results.sortedBy { order.indexOf(it.first) }.map { it.second }
-        fun <T> pick(sel: (MovieMetadata) -> T?): T? = sorted.firstNotNullOfOrNull(sel)
+        val sorted = results.sortedBy { order.indexOf(it.first) }
+        val metas = sorted.map { it.second }
+        fun <T> pick(sel: (MovieMetadata) -> T?): T? = metas.firstNotNullOfOrNull(sel)
         return MovieMetadata(
-            number = sorted.first().number,
+            number = metas.first().number,
             title = pick { it.title },
             titleZh = pick { it.titleZh },
             releaseDate = pick { it.releaseDate },
@@ -60,10 +71,12 @@ class ScraperChain(
             series = pick { it.series },
             durationMin = pick { it.durationMin },
             coverUrl = pick { it.coverUrl },
-            previewUrls = sorted.flatMap { it.previewUrls }.distinct(),
+            coverSource = sorted.firstOrNull { it.second.coverUrl != null }?.first,
+            previewUrls = sorted.flatMap { it.second.previewUrls }.distinct(),
+            previewSource = sorted.firstOrNull { it.second.previewUrls.isNotEmpty() }?.first,
             plot = pick { it.plot },
-            actresses = sorted.flatMap { it.actresses }.distinct(),
-            genres = sorted.flatMap { it.genres }.distinct(),
+            actresses = sorted.flatMap { it.second.actresses }.distinct(),
+            genres = sorted.flatMap { it.second.genres }.distinct(),
         )
     }
 

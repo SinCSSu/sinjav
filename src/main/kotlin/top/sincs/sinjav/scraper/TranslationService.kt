@@ -31,15 +31,38 @@ class TranslationService(
         val input = text.trim()
         if (input.isEmpty()) return null
         return try {
-            when (providerName()) {
+            // 已是中文（无日文假名）时不再调用翻译 API——繁体会被原样返回，
+            // 直接用 opencc 做繁→简转换
+            val result = if (isChinese(input)) com.github.houbb.opencc4j.util.ZhConverterUtil.toSimple(input)
+            else when (providerName()) {
                 "deepl" -> deepl(input)
                 "baidu" -> baidu(input)
                 else -> google(input)
-            }?.trim()?.ifBlank { null }
+            }?.let { com.github.houbb.opencc4j.util.ZhConverterUtil.toSimple(it) }
+            result?.trim()?.ifBlank { null }
         } catch (e: Exception) {
             log.warn("翻译失败（{}）: {}", providerName(), e.message)
             null
         }
+    }
+
+    /** 是否为中文文本：含汉字且不含日文假名（含假名视为日文，需走翻译） */
+    private fun isChinese(text: String): Boolean =
+        text.contains(Regex("""[\u4e00-\u9fff]""")) && !text.contains(Regex("""[\u3040-\u30ff]"""))
+
+    /** 已是中文的文本直接繁→简（供调用方处理未经翻译通道的繁体字段，如 javdb/missav 的中文标题） */
+    fun toSimplified(text: String): String = com.github.houbb.opencc4j.util.ZhConverterUtil.toSimple(text)
+
+    // 短标签（类别等）翻译缓存：词表高度重复（同一标签出现在大量影片），避免重复调用翻译接口
+    private val labelCache = java.util.concurrent.ConcurrentHashMap<String, String>()
+
+    /** 翻译短标签为简体中文（带缓存）；失败回退原文。类别词表等小集合使用 */
+    fun translateLabel(text: String): String {
+        val key = text.trim()
+        if (key.isEmpty()) return text
+        // 缓存防膨胀：超上限后不再存储，直接计算
+        if (labelCache.size > 5000) return translateToZh(key) ?: key
+        return labelCache.computeIfAbsent(key) { translateToZh(it) ?: it }
     }
 
     // ---------- DeepL ----------

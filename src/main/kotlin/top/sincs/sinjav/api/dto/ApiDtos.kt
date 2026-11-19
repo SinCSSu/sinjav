@@ -74,13 +74,18 @@ data class PipelineRequest(
 
 data class SettingsUpdate(
     val sourceOrder: String? = null,
-    val strategy: String? = null,
     val userAgent: String? = null,
     val javdbCookie: String? = null,
     val proxyHost: String? = null,
     val proxyPort: Int? = null,
+    /** CF 过盾代理地址（如 trawl MITM http://127.0.0.1:8192）；空则全部走全局代理/直连 */
+    val cfProxyUrl: String? = null,
+    /** 需要 CF 过盾的数据源 id，逗号分隔（如 "javdb"） */
+    val cfProxySources: String? = null,
     val requestIntervalMs: Long? = null,
     val concurrency: Int? = null,
+    val timeoutMs: Long? = null,
+    val cfTimeoutMs: Long? = null,
     val targetDir: String? = null,
     val mode: String? = null,
     val namingTemplate: String? = null,
@@ -138,13 +143,13 @@ data class JobDto(
 data class PageMeta(val page: Int, val size: Int, val total: Long, val totalPages: Int)
 
 data class MovieSummaryDto(
-    val number: String, val title: String?, val releaseDate: String?, val maker: String?,
+    val number: String, val title: String?, val titleOrig: String?, val releaseDate: String?, val maker: String?,
     val actresses: List<String>, val coverUrl: String?, val status: String,
     val plot: String? = null,
 ) {
     companion object {
         fun of(m: Movie, actresses: List<String>) = MovieSummaryDto(
-            number = m.number, title = m.title, releaseDate = m.releaseDate?.toString(),
+            number = m.number, title = m.title, titleOrig = m.titleOrig, releaseDate = m.releaseDate?.toString(),
             maker = m.maker, actresses = actresses, coverUrl = m.coverUrl, status = m.status,
             plot = m.plot,
         )
@@ -185,8 +190,10 @@ data class OrganizeRecordDto(
 )
 
 data class SettingsDto(
-    val sourceOrder: String, val strategy: String, val userAgent: String, val javdbCookie: String,
+    val sourceOrder: String, val userAgent: String, val javdbCookie: String,
     val proxyHost: String, val proxyPort: Int, val requestIntervalMs: Long, val concurrency: Int,
+    val timeoutMs: Long, val cfTimeoutMs: Long,
+    val cfProxyUrl: String, val cfProxySources: String,
     val targetDir: String, val mode: String, val namingTemplate: String, val conflictPolicy: String,
     val generateNfo: Boolean, val downloadImages: Boolean,
     val deeplApiKey: String, val baiduTranslateAppId: String, val baiduTranslateSecret: String,
@@ -194,10 +201,12 @@ data class SettingsDto(
 ) {
     companion object {
         fun from(props: AppProperties) = SettingsDto(
-            sourceOrder = props.scraper.sourceOrder, strategy = props.scraper.strategy,
+            sourceOrder = props.scraper.sourceOrder,
             userAgent = props.scraper.userAgent, javdbCookie = props.scraper.javdbCookie,
             proxyHost = props.scraper.proxyHost, proxyPort = props.scraper.proxyPort,
+            cfProxyUrl = props.scraper.cfProxyUrl, cfProxySources = props.scraper.cfProxySources,
             requestIntervalMs = props.scraper.requestIntervalMs, concurrency = props.scraper.concurrency,
+            timeoutMs = props.scraper.timeoutMs, cfTimeoutMs = props.scraper.cfTimeoutMs,
             targetDir = props.organize.targetDir, mode = props.organize.mode,
             namingTemplate = props.organize.namingTemplate, conflictPolicy = props.organize.conflictPolicy,
             generateNfo = props.organize.generateNfo, downloadImages = props.organize.downloadImages,

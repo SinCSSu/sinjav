@@ -146,9 +146,11 @@ class Organizer(
             if (downloadImages) downloadImages(subDir, movie, mode)
 
             fileRecords.updateOrganizeResult(record.id, placed.toString(), mode, "organized", null)
+            log.info("整理完成 {} → {} (mode={})", record.sourcePath, placed, mode)
             OrganizeResult(true)
         } catch (e: OrganizeSkipException) {
             fileRecords.updateOrganizeResult(record.id, record.targetPath, mode, "skipped", e.message)
+            log.info("整理跳过 {}: {}", record.sourcePath, e.message)
             OrganizeResult(false, skipped = true, message = e.message)
         } catch (e: Exception) {
             log.warn("整理失败 {}: {}", record.sourcePath, e.message)
@@ -247,13 +249,13 @@ class Organizer(
         val ref = movie.coverUrl
         // move 模式下封面也可能已存在于源目录，但直接重新下载最简单可靠
         movie.coverUrl?.let { url ->
-            runCatching { Files.write(subDir.resolve("poster.jpg"), http.download(url, referer = ref)) }
+            runCatching { Files.write(subDir.resolve("poster.jpg"), http.download(url, referer = ref, source = movie.source)) }
                 .onFailure { log.warn("下载封面失败 {}: {}", url, it.message) }
-            runCatching { Files.write(subDir.resolve("fanart.jpg"), http.download(url, referer = ref)) }
+            runCatching { Files.write(subDir.resolve("fanart.jpg"), http.download(url, referer = ref, source = movie.source)) }
                 .onFailure { log.warn("下载 fanart 失败 {}: {}", url, it.message) }
         }
         movie.previewUrls.forEachIndexed { i, url ->
-            runCatching { Files.write(subDir.resolve("preview${i + 1}.jpg"), http.download(url, referer = ref)) }
+            runCatching { Files.write(subDir.resolve("preview${i + 1}.jpg"), http.download(url, referer = ref, source = movie.source)) }
                 .onFailure { log.warn("下载剧照失败 {}: {}", url, it.message) }
         }
     }

@@ -64,6 +64,9 @@
         <div class="info">
           <div class="number">{{ m.number }}</div>
           <div class="title" :title="m.title ?? ''">{{ m.title || '—' }}</div>
+          <div v-if="m.titleOrig && m.titleOrig !== m.title" class="title-orig" :title="m.titleOrig">
+            {{ m.titleOrig }}
+          </div>
           <div class="meta">
             <span class="ellipsis">{{ m.actresses.join(' / ') }}</span>
             <span v-if="m.releaseDate">{{ m.releaseDate }}</span>
@@ -240,6 +243,14 @@ onMounted(load)
   -webkit-box-orient: vertical;
   overflow: hidden;
   min-height: 2em;
+}
+.title-orig {
+  margin-top: 2px;
+  font-size: 11px;
+  color: var(--el-text-color-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .meta {
   margin-top: 4px;

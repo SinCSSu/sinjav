@@ -71,7 +71,8 @@
               <div class="detail-row"><span class="k">女优</span><span>{{ selected.actresses.join(' / ') || '—' }}</span></div>
               <div class="detail-row">
                 <span class="k">状态</span>
-                <el-tag size="small" :type="statusTagType(selected.status)">{{ statusLabel(selected.status) }}</el-tag>
+                <el-tag v-if="scrapeBusy && selected.status !== 'scraped'" size="small" type="primary">刮削中…</el-tag>
+                <el-tag v-else size="small" :type="statusTagType(selected.status)">{{ statusLabel(selected.status) }}</el-tag>
               </div>
             </div>
           </div>
@@ -121,6 +122,7 @@ const scraped = ref<MovieSummary[]>([])
 const selected = ref<MovieSummary | null>(null)
 const scraping = ref(false)
 const scrapingAll = ref(false)
+const scrapeBusy = ref(false)
 let pollTimer: number | undefined
 
 watch(visible, (open) => {
@@ -152,12 +154,14 @@ async function loadLists() {
 async function scrapeSelected() {
   if (!selected.value) return
   scraping.value = true
+  scrapeBusy.value = true
   try {
     const job = await api.triggerScrape({ numbers: [selected.value.number] })
     ElMessage.success(`刮削任务 #${job.jobId} 已创建`)
     emit('created')
     pollUntilDone(job.jobId)
   } catch (e) {
+    scrapeBusy.value = false
     ElMessage.error(e instanceof Error ? e.message : String(e))
   } finally {
     scraping.value = false
@@ -166,19 +170,30 @@ async function scrapeSelected() {
 
 async function scrapeAll() {
   scrapingAll.value = true
+  scrapeBusy.value = true
   try {
     const job = await api.triggerScrape({})
     ElMessage.success(`刮削任务 #${job.jobId} 已创建（共 ${unscraped.value.length} 个待刮削）`)
     emit('created')
     pollUntilDone(job.jobId)
   } catch (e) {
+    scrapeBusy.value = false
     ElMessage.error(e instanceof Error ? e.message : String(e))
   } finally {
     scrapingAll.value = false
   }
 }
 
-/** 轮询任务状态，结束后刷新列表 */
+/** 刮削完成后从最新列表按番号找回影片，保持右侧选中项并展示刮削内容 */
+function refreshSelected() {
+  const n = selected.value?.number
+  if (!n) return
+  const found = unscraped.value.find(m => m.number === n)
+    ?? scraped.value.find(m => m.number === n)
+  selected.value = found ?? null
+}
+
+/** 轮询任务状态，结束后刷新列表并同步右侧详情 */
 function pollUntilDone(jobId: number) {
   stopPoll()
   pollTimer = window.setInterval(async () => {
@@ -186,7 +201,9 @@ function pollUntilDone(jobId: number) {
       const job = await api.getJob(jobId)
       if (job.status === 'completed' || job.status === 'failed') {
         stopPoll()
+        scrapeBusy.value = false
         await loadLists()
+        refreshSelected()
         ElMessage({
           type: job.status === 'completed' ? 'success' : 'warning',
           message: job.status === 'completed'
@@ -196,6 +213,7 @@ function pollUntilDone(jobId: number) {
       }
     } catch {
       stopPoll()
+      scrapeBusy.value = false
     }
   }, 2000)
 }

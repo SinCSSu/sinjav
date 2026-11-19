@@ -34,6 +34,11 @@ class ScanService(
      */
     fun execute(jobId: Long, params: ScanParams) {
         val minSize = params.minFileSizeMb ?: props.scan.minFileSizeMb
+        log.info(
+            "扫描开始 jobId={} 目录={} recursive={} 最小体积={}MB 扩展名={}",
+            jobId, params.sourceDirs, params.recursive, minSize,
+            params.extensions.ifEmpty { "全部" },
+        )
         val files = try {
             applyFilters(
                 scanner.scan(params.sourceDirs, params.recursive, params.extensions, minSize),
@@ -49,10 +54,17 @@ class ScanService(
             jobs.finish(jobId, "failed")
             return
         }
+        log.info(
+            "扫描过滤完成 jobId={} 遍历后保留 {} 个文件（排除清单 {} 条，文件名正则 {}）",
+            jobId, files.size, params.excludePaths.size, params.filenamePattern ?: "无",
+        )
 
         jobs.setTotalItems(jobId, files.size)
         var done = 0
         var failed = 0
+        var recognizedCount = 0
+        var unrecognizedCount = 0
+        var skippedCount = 0
         files.forEach { f ->
             try {
                 val record = fileRecords.upsertOnScan(f.sourcePath, f.fileName, f.fileSize, f.fileMtime)
@@ -65,9 +77,15 @@ class ScanService(
                     if (recognized != null) {
                         fileRecords.updateRecognize(record.id, recognized.normalized, "recognized")
                         movies.ensurePending(recognized.normalized, recognized.raw)
+                        recognizedCount++
+                        log.info("识别成功 {} ← {}", recognized.normalized, f.fileName)
                     } else {
                         fileRecords.updateRecognize(record.id, null, "unrecognized")
+                        unrecognizedCount++
+                        log.debug("无法识别番号: {}", f.fileName)
                     }
+                } else {
+                    skippedCount++
                 }
             } catch (e: Exception) {
                 failed++
@@ -78,7 +96,10 @@ class ScanService(
             if (done % 20 == 0 || done == files.size) jobs.updateProgress(jobId, done, failed)
         }
         jobs.finish(jobId, "completed")
-        log.info("扫描完成 jobId={} 共 {} 个文件", jobId, files.size)
+        log.info(
+            "扫描完成 jobId={} 文件={} 新识别={} 未识别={} 增量跳过={} 失败={}",
+            jobId, files.size, recognizedCount, unrecognizedCount, skippedCount, failed,
+        )
     }
 
     companion object {

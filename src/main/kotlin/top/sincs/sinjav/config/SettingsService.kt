@@ -1,6 +1,7 @@
 package top.sincs.sinjav.config
 
 import jakarta.annotation.PostConstruct
+import org.slf4j.LoggerFactory
 import org.springframework.boot.sql.init.dependency.DependsOnDatabaseInitialization
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate
 import org.springframework.stereotype.Service
@@ -15,6 +16,11 @@ class SettingsService(
     private val props: AppProperties,
 ) {
 
+    private val log = LoggerFactory.getLogger(SettingsService::class.java)
+
+    /** 敏感配置项：日志中打码 */
+    private val sensitiveKeys = setOf("javdbCookie", "deeplApiKey", "baiduTranslateAppId", "baiduTranslateSecret")
+
     @PostConstruct
     fun applyFromDb() {
         val rows = jdbc.query(
@@ -26,13 +32,16 @@ class SettingsService(
     fun update(u: top.sincs.sinjav.api.dto.SettingsUpdate) {
         val changes = buildList {
             u.sourceOrder?.let { add("sourceOrder" to it) }
-            u.strategy?.let { add("strategy" to it) }
             u.userAgent?.let { add("userAgent" to it) }
             u.javdbCookie?.let { add("javdbCookie" to it) }
             u.proxyHost?.let { add("proxyHost" to it) }
             u.proxyPort?.let { add("proxyPort" to it.toString()) }
+            u.cfProxyUrl?.let { add("cfProxyUrl" to it) }
+            u.cfProxySources?.let { add("cfProxySources" to it) }
             u.requestIntervalMs?.let { add("requestIntervalMs" to it.toString()) }
             u.concurrency?.let { add("concurrency" to it.toString()) }
+            u.timeoutMs?.let { add("timeoutMs" to it.toString()) }
+            u.cfTimeoutMs?.let { add("cfTimeoutMs" to it.toString()) }
             u.targetDir?.let { add("targetDir" to it) }
             u.mode?.let { add("mode" to it) }
             u.namingTemplate?.let { add("namingTemplate" to it) }
@@ -42,6 +51,12 @@ class SettingsService(
             u.deeplApiKey?.let { add("deeplApiKey" to it) }
             u.baiduTranslateAppId?.let { add("baiduTranslateAppId" to it) }
             u.baiduTranslateSecret?.let { add("baiduTranslateSecret" to it) }
+        }
+        if (changes.isNotEmpty()) {
+            log.info(
+                "配置更新: {}",
+                changes.joinToString(", ") { (k, v) -> "$k=${if (k in sensitiveKeys) "***" else v}" },
+            )
         }
         changes.forEach { (k, v) ->
             jdbc.update(
@@ -58,13 +73,16 @@ class SettingsService(
     private fun apply(key: String, value: String) {
         when (key) {
             "sourceOrder" -> props.scraper.sourceOrder = value
-            "strategy" -> props.scraper.strategy = value
             "userAgent" -> props.scraper.userAgent = value
             "javdbCookie" -> props.scraper.javdbCookie = value
             "proxyHost" -> props.scraper.proxyHost = value
             "proxyPort" -> props.scraper.proxyPort = value.toIntOrNull() ?: 0
+            "cfProxyUrl" -> props.scraper.cfProxyUrl = value
+            "cfProxySources" -> props.scraper.cfProxySources = value
             "requestIntervalMs" -> props.scraper.requestIntervalMs = value.toLongOrNull() ?: 1500
             "concurrency" -> props.scraper.concurrency = value.toIntOrNull() ?: 1
+            "timeoutMs" -> props.scraper.timeoutMs = value.toLongOrNull() ?: 15000
+            "cfTimeoutMs" -> props.scraper.cfTimeoutMs = value.toLongOrNull() ?: 60000
             "targetDir" -> props.organize.targetDir = value
             "mode" -> props.organize.mode = value
             "namingTemplate" -> props.organize.namingTemplate = value

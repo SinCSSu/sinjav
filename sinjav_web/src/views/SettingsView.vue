@@ -13,12 +13,6 @@
           <el-form-item label="数据源优先顺序">
             <el-input v-model="form.sourceOrder" placeholder="javbus, javdb" style="max-width: 400px" />
           </el-form-item>
-          <el-form-item label="合并策略">
-            <el-radio-group v-model="form.strategy">
-              <el-radio value="fallback">主备回退</el-radio>
-              <el-radio value="merge">字段合并</el-radio>
-            </el-radio-group>
-          </el-form-item>
           <el-form-item label="User-Agent">
             <el-input v-model="form.userAgent" type="textarea" :rows="2" style="max-width: 600px" />
           </el-form-item>
@@ -37,12 +31,41 @@
           <el-form-item label="代理端口">
             <el-input-number v-model="form.proxyPort" :min="0" :max="65535" />
           </el-form-item>
+          <el-divider content-position="left">CF 过盾（trawl MITM 代理）</el-divider>
+          <el-form-item label="过盾代理地址">
+            <el-input
+              v-model="form.cfProxyUrl"
+              placeholder="如 http://127.0.0.1:8192；留空则全部走上方代理/直连"
+              style="max-width: 500px"
+            />
+          </el-form-item>
+          <el-form-item label="过盾数据源">
+            <el-select
+              v-model="cfProxySourceList"
+              multiple
+              collapse-tags
+              placeholder="不勾选则不过盾"
+              style="width: 300px"
+            >
+              <el-option v-for="s in sourceOptions" :key="s" :label="s" :value="s" />
+            </el-select>
+            <span class="hint">勾选的数据源请求与图片走 trawl 过盾代理，其余走全局代理/直连</span>
+          </el-form-item>
           <el-form-item label="请求间隔 (ms)">
             <el-input-number v-model="form.requestIntervalMs" :min="0" :step="100" />
             <span class="hint">限速防风控</span>
           </el-form-item>
           <el-form-item label="并发数">
             <el-input-number v-model="form.concurrency" :min="1" :max="32" />
+            <span class="hint">同时刮削的影片数；每个影片会并发请求所有数据源</span>
+          </el-form-item>
+          <el-form-item label="请求超时 (ms)">
+            <el-input-number v-model="form.timeoutMs" :min="1000" :max="120000" :step="1000" />
+            <span class="hint">普通请求（直连/全局代理）的超时时间</span>
+          </el-form-item>
+          <el-form-item label="过盾超时 (ms)">
+            <el-input-number v-model="form.cfTimeoutMs" :min="1000" :max="600000" :step="5000" />
+            <span class="hint">走过盾代理的请求超时，需等待 CF 挑战，建议比普通超时长</span>
           </el-form-item>
           <el-divider content-position="left">翻译设置（DeepL &gt; 百度 &gt; Google 兜底）</el-divider>
           <el-form-item label="DeepL API Key">
@@ -120,7 +143,7 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { api } from '../api'
 import type { SettingsUpdate } from '../api/types'
@@ -130,6 +153,26 @@ const saving = ref(false)
 const original = ref<SettingsUpdate>({})
 
 const form = reactive<SettingsUpdate>({})
+
+/** 数据源下拉选项：从 sourceOrder 解析 */
+const sourceOptions = computed(() =>
+  (form.sourceOrder ?? '')
+    .split(',')
+    .map((s) => s.trim().toLowerCase())
+    .filter(Boolean)
+)
+
+/** cfProxySources 逗号串 <-> 多选数组 */
+const cfProxySourceList = computed({
+  get: () =>
+    (form.cfProxySources ?? '')
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean),
+  set: (v: string[]) => {
+    form.cfProxySources = v.join(', ')
+  },
+})
 
 async function load() {
   loading.value = true

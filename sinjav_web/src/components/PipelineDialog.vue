@@ -18,12 +18,6 @@
       <el-form-item label="执行刮削">
         <el-switch v-model="doScrape" />
       </el-form-item>
-      <el-form-item v-if="doScrape" label="合并策略">
-        <el-radio-group v-model="strategy">
-          <el-radio value="fallback">使用全局配置</el-radio>
-          <el-radio value="merge">字段合并</el-radio>
-        </el-radio-group>
-      </el-form-item>
 
       <el-divider content-position="left">整理</el-divider>
       <el-form-item label="执行整理">
@@ -54,7 +48,7 @@
 import { ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { api } from '../api'
-import type { LinkMode, ScraperStrategy } from '../api/types'
+import type { LinkMode } from '../api/types'
 import DirTreeInput from './DirTreeInput.vue'
 
 const visible = defineModel<boolean>({ default: false })
@@ -63,7 +57,6 @@ const emit = defineEmits<{ created: [] }>()
 const sourceDirs = ref('')
 const recursive = ref(true)
 const doScrape = ref(true)
-const strategy = ref<ScraperStrategy>('fallback')
 const doOrganize = ref(true)
 const targetDir = ref('')
 const mode = ref<LinkMode | ''>('')
@@ -82,9 +75,7 @@ async function submit() {
   try {
     const job = await api.triggerPipeline({
       scan: { sourceDirs: dirs, recursive: recursive.value },
-      scrape: doScrape.value
-        ? { strategy: strategy.value === 'fallback' ? undefined : strategy.value }
-        : undefined,
+      scrape: doScrape.value ? {} : undefined,
       organize: doOrganize.value
         ? { targetDir: targetDir.value.trim() || undefined, mode: mode.value || undefined }
         : undefined,

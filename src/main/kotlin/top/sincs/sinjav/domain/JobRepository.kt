@@ -1,5 +1,6 @@
 package top.sincs.sinjav.domain
 
+import org.slf4j.LoggerFactory
 import org.springframework.jdbc.core.PreparedStatementCreator
 import org.springframework.jdbc.core.RowMapper
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate
@@ -25,6 +26,8 @@ private val JOB_MAPPER = RowMapper { rs, _ ->
 
 @Repository
 class JobRepository(private val jdbc: NamedParameterJdbcTemplate) {
+
+    private val log = LoggerFactory.getLogger(JobRepository::class.java)
 
     /** 创建任务并返回（KeyHolder 获取自增 id，双方言兼容：SQLite/PostgreSQL） */
     fun create(type: String, paramsJson: String?, totalItems: Int): Job {
@@ -76,6 +79,8 @@ class JobRepository(private val jdbc: NamedParameterJdbcTemplate) {
         jdbc.update("UPDATE jobs SET total_items = :ti WHERE id = :id", mapOf("ti" to totalItems, "id" to id))
     }
 
+    /** 读改写合并，影片级并发刮削下可能多线程同时追加，需同步避免丢记录 */
+    @Synchronized
     fun appendError(id: Long, item: String, reason: String) {
         val existing = findById(id)?.errorDetail
         val entry = "\"${jsonEscape(item)}\": \"${jsonEscape(reason)}\""
@@ -88,6 +93,7 @@ class JobRepository(private val jdbc: NamedParameterJdbcTemplate) {
             "UPDATE jobs SET status = :s, finished_at = :ft WHERE id = :id",
             mapOf("s" to status, "ft" to Timestamp.from(Instant.now()), "id" to id),
         )
+        log.info("任务结束 jobId={} status={}", id, status)
     }
 
     fun existsRunning(type: String): Boolean =

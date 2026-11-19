@@ -1,5 +1,6 @@
 package top.sincs.sinjav.scan
 
+import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
 import top.sincs.sinjav.domain.FileRecordRepository
 import top.sincs.sinjav.domain.MovieRepository
@@ -26,7 +27,10 @@ class ScanCommitService(
     private val recognizer: NumberRecognizer,
 ) {
 
+    private val log = LoggerFactory.getLogger(ScanCommitService::class.java)
+
     fun commit(items: List<ScanCommitItem>): ScanCommitResult {
+        log.info("扫描预览落库开始 共 {} 条", items.size)
         var recognized = 0L
         var unrecognized = 0L
         for (item in items) {
@@ -36,11 +40,13 @@ class ScanCommitService(
                 fileRecords.updateRecognize(record.id, hit.normalized, "recognized")
                 movies.ensurePending(hit.normalized, hit.raw)
                 recognized++
+                log.info("落库识别成功 {} ← {}", hit.normalized, item.fileName)
             } else {
                 fileRecords.updateRecognize(record.id, null, "unrecognized")
                 unrecognized++
             }
         }
+        log.info("扫描预览落库完成 总计={} 识别={} 未识别={}", items.size, recognized, unrecognized)
         return ScanCommitResult(items.size.toLong(), recognized, unrecognized)
     }
 }

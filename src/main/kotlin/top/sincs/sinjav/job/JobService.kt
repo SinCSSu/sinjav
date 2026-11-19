@@ -1,5 +1,6 @@
 package top.sincs.sinjav.job
 
+import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
 import top.sincs.sinjav.domain.Job
 import top.sincs.sinjav.domain.JobRepository
@@ -25,6 +26,8 @@ class JobService(
     private val objectMapper: ObjectMapper,
 ) {
 
+    private val log = LoggerFactory.getLogger(JobService::class.java)
+
     fun triggerScan(params: ScanParams): Job {
         params.sourceDirs.ifEmpty { throw IllegalArgumentException("sourceDirs 不能为空") }
         return createAndDispatch("scan", params) { id, p -> runner.runScan(id, p) }
@@ -44,6 +47,7 @@ class JobService(
         if (jobs.existsRunning(type)) throw JobConflictException("已有 $type 任务在运行，请等待其完成")
         val json = runCatching { objectMapper.writeValueAsString(params) }.getOrNull()
         val job = jobs.create(type, json, 0)
+        log.info("任务触发 type={} jobId={} params={}", type, job.id, json ?: "<参数序列化失败>")
         dispatch(job.id, params)
         return job
     }

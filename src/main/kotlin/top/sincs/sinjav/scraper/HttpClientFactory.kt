@@ -1,24 +1,36 @@
 package top.sincs.sinjav.scraper
 
+import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Component
 import top.sincs.sinjav.config.AppProperties
+import java.io.File
 import java.net.InetSocketAddress
 import java.net.ProxySelector
 import java.net.URI
 import java.net.http.HttpClient
 import java.net.http.HttpRequest
 import java.net.http.HttpResponse
+import java.security.KeyStore
+import java.security.cert.CertificateFactory
 import java.time.Duration
 import java.util.concurrent.locks.ReentrantReadWriteLock
+import javax.net.ssl.SSLContext
+import javax.net.ssl.TrustManagerFactory
 import kotlin.concurrent.read
 import kotlin.concurrent.write
 
 /**
  * 统一 HTTP 客户端：代理 / UA / Cookie / 超时 / 全局限速（并发 1~N + 请求间隔）。
  * 站点有风控，全局节流避免被封。
+ *
+ * 代理分流：
+ * - 请求 source 命中 cfProxySources 且配置了 cfProxyUrl → 走 CF 过盾代理（如 trawl MITM）
+ * - 否则走全局 proxyHost/proxyPort（未配则直连）
  */
 @Component
 class HttpClientFactory(private val props: AppProperties) {
+
+    private val log = LoggerFactory.getLogger(HttpClientFactory::class.java)
 
     // HttpClient 随代理配置重建：SettingsService 运行时改代理后立即生效，无需重启
     @Volatile
@@ -27,7 +39,28 @@ class HttpClientFactory(private val props: AppProperties) {
     @Volatile
     private var cachedProxyKey: Pair<String, Int>? = null
 
-    private fun client(): HttpClient {
+    // CF 过盾代理 client（独立缓存，key = 过盾代理地址 + CA 证书路径）
+    @Volatile
+    private var cachedCfClient: HttpClient? = null
+
+    @Volatile
+    private var cachedCfKey: Pair<String, String>? = null
+
+    /** source 命中过盾数据源且配置了过盾代理 */
+    private fun useCfProxy(source: String?): Boolean {
+        if (source.isNullOrBlank()) return false
+        if (props.scraper.cfProxyUrl.isBlank()) return false
+        return source.trim().lowercase() in props.cfProxySourceSet()
+    }
+
+    private fun client(source: String? = null): HttpClient =
+        if (useCfProxy(source)) cfClient() else defaultClient()
+
+    /** 请求超时：过盾链路单独用 cfTimeoutMs（需等待 CF 挑战，更长） */
+    private fun timeoutFor(source: String?): Duration =
+        Duration.ofMillis(if (useCfProxy(source)) props.scraper.cfTimeoutMs else props.scraper.timeoutMs)
+
+    private fun defaultClient(): HttpClient {
         val key = props.scraper.proxyHost to props.scraper.proxyPort
         cachedClient?.takeIf { cachedProxyKey == key }?.let { return it }
         synchronized(this) {
@@ -46,22 +79,78 @@ class HttpClientFactory(private val props: AppProperties) {
         }
     }
 
+    private fun cfClient(): HttpClient {
+        val key = props.scraper.cfProxyUrl to props.scraper.cfCaCertPath
+        cachedCfClient?.takeIf { cachedCfKey == key }?.let { return it }
+        synchronized(this) {
+            cachedCfClient?.takeIf { cachedCfKey == key }?.let { return it }
+            val uri = URI.create(props.scraper.cfProxyUrl.trim())
+            val port = if (uri.port > 0) uri.port else 80
+            val builder = HttpClient.newBuilder()
+                .connectTimeout(Duration.ofMillis(props.scraper.cfTimeoutMs))
+                .followRedirects(HttpClient.Redirect.NORMAL)
+                .proxy(ProxySelector.of(InetSocketAddress(uri.host, port)))
+            sslContextWithCa()?.let { builder.sslContext(it) }
+            val created = builder.build()
+            cachedCfClient = created
+            cachedCfKey = key
+            log.info("CF 过盾代理 client 已构建: {} (CA: {})", props.scraper.cfProxyUrl, props.scraper.cfCaCertPath.ifBlank { "默认信任库" })
+            return created
+        }
+    }
+
+    /**
+     * 构造「JVM 默认 cacerts + trawl CA」合并信任库，不影响其他 https 站点校验。
+     * 路径未配置或加载失败时返回 null（退回默认信任库）。
+     * 支持两种路径：classpath:ca.crt（打进 jar 的资源）或文件系统路径（如挂载 trawl_ca 卷）。
+     */
+    private fun sslContextWithCa(): SSLContext? {
+        val path = props.scraper.cfCaCertPath
+        if (path.isBlank()) return null
+        val certStream = openCertStream(path) ?: return null
+        return runCatching {
+            val ks = KeyStore.getInstance(KeyStore.getDefaultType())
+            val cacerts = File(System.getProperty("java.home"), "lib/security/cacerts")
+            ks.load(if (cacerts.isFile) cacerts.inputStream() else null, "changeit".toCharArray())
+            certStream.use { ins ->
+                val cert = CertificateFactory.getInstance("X.509").generateCertificate(ins)
+                ks.setCertificateEntry("cf-proxy-ca", cert)
+            }
+            val tmf = TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm())
+            tmf.init(ks)
+            SSLContext.getInstance("TLS").apply { init(null, tmf.trustManagers, null) }
+        }.onFailure {
+            log.warn("加载 CF 过盾 CA 证书失败({})，使用默认信任库: {}", it.message, path)
+        }.getOrNull()
+    }
+
+    /** 打开 CA 证书输入流；不支持或不存在时返回 null 并告警 */
+    private fun openCertStream(path: String): java.io.InputStream? =
+        if (path.startsWith("classpath:")) {
+            val res = org.springframework.core.io.ClassPathResource(path.removePrefix("classpath:").trimStart('/'))
+            if (res.exists()) res.inputStream
+            else null.also { log.warn("CF 过盾 CA classpath 资源不存在，使用默认信任库: {}", path) }
+        } else {
+            val file = File(path)
+            if (file.isFile) file.inputStream()
+            else null.also { log.warn("CF 过盾 CA 证书文件不存在，使用默认信任库: {}", path) }
+        }
+
     private val lock = ReentrantReadWriteLock()
     private var lastRequestAt = 0L
-    private var permitCount = 0
 
-    fun get(url: String, referer: String? = null, cookie: String? = null): String {
+    fun get(url: String, referer: String? = null, cookie: String? = null, source: String? = null): String {
         throttle()
         try {
             val builder = HttpRequest.newBuilder(URI.create(url))
-                .timeout(Duration.ofMillis(props.scraper.timeoutMs))
+                .timeout(timeoutFor(source))
                 .header("User-Agent", props.scraper.userAgent)
                 .header("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
                 .header("Accept-Language", "zh-CN,zh;q=0.9,en;q=0.8")
             // 未显式指定 Referer 时按 URL 源站点推导（JavBus/JavDB 图片有 Referer 防盗链）
             builder.header("Referer", referer ?: originOf(url))
             cookie?.takeIf { it.isNotBlank() }?.let { builder.header("Cookie", it) }
-            val resp = client().send(builder.GET().build(), HttpResponse.BodyHandlers.ofString())
+            val resp = client(source).send(builder.GET().build(), HttpResponse.BodyHandlers.ofString())
             if (resp.statusCode() != 200) throw ScrapeException("HTTP ${resp.statusCode()} for $url")
             return resp.body()
         } finally {
@@ -69,7 +158,8 @@ class HttpClientFactory(private val props: AppProperties) {
         }
     }
 
-    fun download(url: String, referer: String? = null): ByteArray = downloadDetailed(url, referer).bytes
+    fun download(url: String, referer: String? = null, source: String? = null): ByteArray =
+        downloadDetailed(url, referer, source).bytes
 
     /** POST JSON 请求（如 DeepL 翻译 API），返回响应体 */
     fun postJson(url: String, json: String, headers: Map<String, String> = emptyMap()): String {
@@ -89,14 +179,14 @@ class HttpClientFactory(private val props: AppProperties) {
     }
 
     /** 下载二进制资源（图片），返回内容与 Content-Type */
-    fun downloadDetailed(url: String, referer: String? = null): Downloaded {
+    fun downloadDetailed(url: String, referer: String? = null, source: String? = null): Downloaded {
         throttle()
         try {
             val builder = HttpRequest.newBuilder(URI.create(url))
-                .timeout(Duration.ofMillis(props.scraper.timeoutMs))
+                .timeout(timeoutFor(source))
                 .header("User-Agent", props.scraper.userAgent)
             builder.header("Referer", referer ?: originOf(url))
-            val resp = client().send(builder.GET().build(), HttpResponse.BodyHandlers.ofByteArray())
+            val resp = client(source).send(builder.GET().build(), HttpResponse.BodyHandlers.ofByteArray())
             if (resp.statusCode() != 200) throw ScrapeException("HTTP ${resp.statusCode()} for image $url")
             return Downloaded(resp.body(), resp.headers().firstValue("content-type").orElse(null))
         } finally {
@@ -112,32 +202,26 @@ class HttpClientFactory(private val props: AppProperties) {
         return "${uri.scheme}://${uri.host}/"
     }
 
-    /** 全局并发限制 + 请求最小间隔 */
+    /** 全局请求最小间隔（限速防风控）。并发上限已移至影片维度（ScraperProps.concurrency），此处不再限制同时在途请求数 */
     private fun throttle() {
         val interval = props.scraper.requestIntervalMs
-        val maxConcurrent = props.scraper.concurrency.coerceAtLeast(1)
-        while (true) {
-            var waitMs = 0L
-            var ok = false
-            lock.write {
-                if (permitCount < maxConcurrent) {
-                    val now = System.currentTimeMillis()
-                    val since = now - lastRequestAt
-                    if (since >= interval) {
-                        permitCount++
-                        lastRequestAt = now
-                        ok = true
-                    } else {
-                        waitMs = interval - since
-                    }
-                }
+        if (interval <= 0) return
+        val waitMs = lock.write {
+            val now = System.currentTimeMillis()
+            val since = now - lastRequestAt
+            if (since >= interval) {
+                lastRequestAt = now
+                0L
+            } else {
+                // 排队的请求依次错开一个间隔，保证相邻请求起始时间相差 interval
+                lastRequestAt += interval
+                interval - since
             }
-            if (ok) return
-            Thread.sleep(waitMs.coerceAtLeast(20))
         }
+        if (waitMs > 0) Thread.sleep(waitMs)
     }
 
     fun release() {
-        lock.write { permitCount = (permitCount - 1).coerceAtLeast(0) }
+        // 限速已改为纯间隔制，无需释放配额；保留空实现以兼容调用
     }
 }

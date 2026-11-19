@@ -3,18 +3,28 @@ package top.sincs.sinjav.config
 import org.springframework.boot.context.properties.ConfigurationProperties
 
 data class ScraperProps(
-    var sourceOrder: String = "javbus, javdb",
-    var strategy: String = "fallback",
+    var sourceOrder: String = "javbus, javdb, missav",
     var userAgent: String = "Mozilla/5.0",
     var javdbCookie: String = "",
     var proxyHost: String = "",
     var proxyPort: Int = 0,
     var requestIntervalMs: Long = 1500,
     var concurrency: Int = 1,
+    // 普通请求超时；过盾（cfProxy）请求单独用 cfTimeoutMs（过盾需等待 CF 挑战，更长）
     var timeoutMs: Long = 15000,
+    var cfTimeoutMs: Long = 60000,
     var maxRetriesPerItem: Int = 1,
     var baseUrlJavbus: String = "https://www.javbus.com",
     var baseUrlJavdb: String = "https://javdb.com",
+    var baseUrlMissav: String = "https://missav.ai",
+    // CF 过盾代理（如 trawl MITM 正向代理 http://127.0.0.1:8192）。
+    // 配置后：cfProxySources 中的数据源请求与图片走该代理，其余走全局 proxyHost/proxyPort（未配则直连）。
+    var cfProxyUrl: String = "",
+    // 需要 CF 过盾的数据源 id，逗号分隔（如 "javdb"）
+    var cfProxySources: String = "",
+    // trawl CA 证书路径（PEM）。非空且文件存在时，过盾代理 client 挂载含该 CA 的 SSLContext；
+    // 仅限 application.yaml / 环境变量配置（运维级），不进设置界面
+    var cfCaCertPath: String = "",
     // 翻译 API：DeepL > 百度 > Google 免费接口（未配置 key 时兜底）
     var deeplApiKey: String = "",
     var baiduTranslateAppId: String = "",
@@ -58,4 +68,8 @@ data class AppProperties(
 
     fun sourceOrderList(): List<String> =
         scraper.sourceOrder.split(',').map { it.trim().lowercase() }.filter { it.isNotBlank() }
+
+    /** 需要 CF 过盾的数据源 id 集合 */
+    fun cfProxySourceSet(): Set<String> =
+        scraper.cfProxySources.split(',').map { it.trim().lowercase() }.filter { it.isNotBlank() }.toSet()
 }

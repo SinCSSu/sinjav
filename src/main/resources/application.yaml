@@ -22,9 +22,8 @@ server:
 
 sinjav:
   scraper:
-    # 刮削源优先级（主源在前，失败回退备源）
-    source-order: javbus, javdb
-    strategy: fallback        # fallback=主备回退 | merge=字段合并（主源优先）
+    # 刮削源优先级：所有源并发请求，每个字段按此优先级从高到低取第一个非空值（列表字段取并集）
+    source-order: javbus, javdb, missav
     user-agent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
     javdb-cookie: ""          # JavDB 登录 Cookie（部分信息需登录可见）
     proxy-host: ""            # 可选 HTTP 代理
@@ -32,9 +31,17 @@ sinjav:
     request-interval-ms: 1500 # 相邻请求最小间隔（限速）
     concurrency: 1            # 刮削全局并发
     timeout-ms: 15000
+    cf-timeout-ms: 60000      # 过盾（cfProxy）请求超时：需等待 CF 挑战，通常比普通超时长
     max-retries-per-item: 1   # 单次任务内每条番号最大重试次数
     base-url-javbus: "https://www.javbus.com"
     base-url-javdb: "https://javdb.com"
+    base-url-missav: "https://missav.ai"
+    # CF 过盾代理（如 trawl MITM 正向代理）。运行时也可在设置页修改（settings 表持久化）
+    cf-proxy-url: ""
+    cf-proxy-sources: ""      # 需要 CF 过盾的数据源 id，逗号分隔，如 javdb
+    # trawl CA 证书路径（PEM）。支持 classpath:ca.crt（打包进 jar）或文件系统路径（如挂载 trawl_ca 卷）；
+    # 非空且可读时，过盾代理 client 信任该 CA（合并 JVM 默认 cacerts）。仅此处/环境变量可配
+    cf-ca-cert-path: classpath:ca.crt
     deepl-api-key: ""          # DeepL API key（免费 key 以 :fx 结尾）；配置后优先使用
     baidu-translate-app-id: "" # 百度翻译 APP ID；未配置 DeepL 时使用
     baidu-translate-secret: "" # 百度翻译密钥

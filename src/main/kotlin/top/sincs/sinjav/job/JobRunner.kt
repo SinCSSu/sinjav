@@ -48,6 +48,12 @@ class JobRunner(
     }
 
     private fun executeOrganize(jobId: Long, params: OrganizeParams) {
+        log.info(
+            "整理开始 jobId={} 目标目录={} 模式={} 模板={} 冲突策略={}",
+            jobId,
+            params.targetDir ?: "<全局设置>", params.mode ?: "<全局设置>",
+            params.namingTemplate ?: "<全局设置>", params.conflictPolicy ?: "<全局设置>",
+        )
         if (!params.items.isNullOrEmpty()) {
             // 按文件记录逐条整理（支持覆盖目标路径/整理方式与已整理记录重整）
             jobs.setTotalItems(jobId, params.items.size)

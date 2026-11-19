@@ -36,14 +36,14 @@ class JavBusScraper(
 
     override fun scrape(number: String): MovieMetadata {
         val base = props.scraper.baseUrlJavbus.trimEnd('/')
-        val html = http.get("$base/search/${urlEncode(number)}", referer = base)
+        val html = http.get("$base/search/${urlEncode(number)}", referer = base, source = id())
         val searchDoc = Jsoup.parse(html)
         val detailUrl = searchDoc.select("a.movie-box").firstOrNull()?.attr("href")
             ?: throw ScrapeException("JavBus 未找到番号 $number 的搜索结果")
 
         // 传入 baseUri，使相对路径的封面/剧照链接可以通过 absUrl() 解析为绝对地址
-        val doc = Jsoup.parse(http.get(detailUrl, referer = base), detailUrl)
-        return parseDetail(doc, number)
+        val doc = Jsoup.parse(http.get(detailUrl, referer = base, source = id()), detailUrl)
+        return parseDetail(doc, number).also { logResult(number, it) }
     }
 
     internal fun parseDetail(doc: Document, number: String): MovieMetadata {
