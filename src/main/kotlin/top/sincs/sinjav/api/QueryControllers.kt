@@ -4,6 +4,7 @@ import tools.jackson.databind.ObjectMapper
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PathVariable
+import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.PutMapping
 import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RequestMapping
@@ -159,6 +160,7 @@ class JobController(
 class SettingsController(
     private val props: AppProperties,
     private val settings: SettingsService,
+    private val imageStore: top.sincs.sinjav.scraper.ImageStore,
 ) {
 
     @GetMapping("/settings")
@@ -169,4 +171,8 @@ class SettingsController(
         settings.update(req)
         return SettingsDto.from(props)
     }
+
+    /** 手动清理过期图片缓存（按设置页配置的 TTL），返回删除的文件数与字节数 */
+    @PostMapping("/settings/images/cleanup")
+    fun cleanupImages(): top.sincs.sinjav.scraper.ImageStore.CleanupResult = imageStore.cleanupExpired()
 }

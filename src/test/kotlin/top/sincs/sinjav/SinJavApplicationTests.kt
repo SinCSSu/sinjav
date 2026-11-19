@@ -67,7 +67,7 @@ class SinJavApplicationTests {
     @Test
     fun `设置更新与持久化`(@TempDir tmp: Path) {
         val headers = org.springframework.http.HttpHeaders().apply { contentType = org.springframework.http.MediaType.APPLICATION_JSON }
-        val body = mapOf("namingTemplate" to "{number}/{date} - {title}", "targetDir" to tmp.toString())
+        val body = mapOf("namingTemplate" to "{number}/{date} - {title}")
         val resp = rest.exchange("/api/v1/settings", org.springframework.http.HttpMethod.PUT,
             org.springframework.http.HttpEntity(body, headers), Map::class.java)
         assertEquals(HttpStatus.OK, resp.statusCode)
@@ -250,7 +250,7 @@ class SinJavApplicationTests {
         val preview = rest.postForEntity(
             "/api/v1/organize/preview",
             org.springframework.http.HttpEntity(
-                mapOf("recordIds" to listOf(recordId), "targetDir" to targetDir2.toString(), "namingTemplate" to "{number}/{number} - {title}"),
+                mapOf("recordIds" to listOf(recordId), "targetDir" to targetDir2.toString(), "mode" to "copy", "namingTemplate" to "{number}/{number} - {title}"),
                 headers,
             ),
             Map::class.java,
@@ -266,7 +266,7 @@ class SinJavApplicationTests {
         val reorgResp = rest.postForEntity(
             "/api/v1/organize",
             org.springframework.http.HttpEntity(
-                mapOf("mode" to "copy", "items" to listOf(mapOf("recordId" to recordId, "targetPath" to override))),
+                mapOf("targetDir" to targetDir2.toString(), "mode" to "copy", "items" to listOf(mapOf("recordId" to recordId, "targetPath" to override))),
                 headers,
             ),
             Map::class.java,

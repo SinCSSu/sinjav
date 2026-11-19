@@ -28,12 +28,26 @@ class ScraperChain(
     fun scrapeWithSource(number: String, sources: List<String>? = null): Pair<String, MovieMetadata> {
         val order = (sources ?: props.sourceOrderList()).filter { byId.containsKey(it) }
         if (order.isEmpty()) throw ScrapeException("无可用刮削源，可用源: ${byId.keys}")
+        val results = scrapeAllSources(number, order)
+        return if (results.size > 1) "merged" to merge(results)
+        else results.first()
+            .let { (id, meta) -> id to meta.copy(coverSource = id, previewSource = id) }
+    }
+
+    /**
+     * 并发抓取全部数据源（不合并），返回按 source-order 排序的全部成功结果。
+     * 供多源对比刮削预览使用：用户逐字段选择来源后落库。
+     */
+    @Throws(ScrapeException::class)
+    fun scrapeAllSources(number: String, order: List<String>? = null): List<Pair<String, MovieMetadata>> {
+        val effectiveOrder = (order ?: props.sourceOrderList()).filter { byId.containsKey(it) }
+        if (effectiveOrder.isEmpty()) throw ScrapeException("无可用刮削源，可用源: ${byId.keys}")
 
         val results = Collections.synchronizedList(mutableListOf<Pair<String, MovieMetadata>>()) // (sourceId, metadata)
         val errors = Collections.synchronizedList(mutableListOf<String>())
-        val executor = Executors.newFixedThreadPool(order.size.coerceAtLeast(1))
+        val executor = Executors.newFixedThreadPool(effectiveOrder.size.coerceAtLeast(1))
         try {
-            order.map { id ->
+            effectiveOrder.map { id ->
                 executor.submit {
                     try {
                         results += id to byId.getValue(id).scrape(number)
@@ -49,16 +63,15 @@ class ScraperChain(
             executor.shutdown()
         }
         if (results.isEmpty()) throw ScrapeException("全部刮削源失败（${errors.joinToString("; ")}）")
-        // 每个字段按优先级从高到低取第一个非空值；仅单源成功时直接返回该源结果
-        return if (results.size > 1) "merged" to merge(results, order)
-        else results.sortedBy { order.indexOf(it.first) }.first()
-            .let { (id, meta) -> id to meta.copy(coverSource = id, previewSource = id) }
+        return results.sortedBy { effectiveOrder.indexOf(it.first) }
     }
 
-    /** 字段合并：按 source-order 中靠前的源优先，非空字段不覆盖；图片字段记录实际来源数据源 */
-    private fun merge(results: List<Pair<String, MovieMetadata>>, order: List<String>): MovieMetadata {
-        val sorted = results.sortedBy { order.indexOf(it.first) }
-        val metas = sorted.map { it.second }
+    /** 将 scrapeAllSources 的结果（已按 source-order 排序）合并为单份元数据：每字段取第一个非空值，列表字段取并集 */
+    fun mergeSources(results: List<Pair<String, MovieMetadata>>): MovieMetadata = merge(results)
+
+    /** 字段合并：入参已按 source-order 排序，非空字段不覆盖；图片字段记录实际来源数据源 */
+    private fun merge(sortedResults: List<Pair<String, MovieMetadata>>): MovieMetadata {
+        val metas = sortedResults.map { it.second }
         fun <T> pick(sel: (MovieMetadata) -> T?): T? = metas.firstNotNullOfOrNull(sel)
         return MovieMetadata(
             number = metas.first().number,
@@ -71,12 +84,12 @@ class ScraperChain(
             series = pick { it.series },
             durationMin = pick { it.durationMin },
             coverUrl = pick { it.coverUrl },
-            coverSource = sorted.firstOrNull { it.second.coverUrl != null }?.first,
-            previewUrls = sorted.flatMap { it.second.previewUrls }.distinct(),
-            previewSource = sorted.firstOrNull { it.second.previewUrls.isNotEmpty() }?.first,
+            coverSource = sortedResults.firstOrNull { it.second.coverUrl != null }?.first,
+            previewUrls = sortedResults.flatMap { it.second.previewUrls }.distinct(),
+            previewSource = sortedResults.firstOrNull { it.second.previewUrls.isNotEmpty() }?.first,
             plot = pick { it.plot },
-            actresses = sorted.flatMap { it.second.actresses }.distinct(),
-            genres = sorted.flatMap { it.second.genres }.distinct(),
+            actresses = sortedResults.flatMap { it.second.actresses }.distinct(),
+            genres = sortedResults.flatMap { it.second.genres }.distinct(),
         )
     }
 

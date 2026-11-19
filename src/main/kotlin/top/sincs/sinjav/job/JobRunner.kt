@@ -4,6 +4,7 @@ import org.slf4j.LoggerFactory
 import org.springframework.scheduling.annotation.Async
 import org.springframework.stereotype.Component
 import top.sincs.sinjav.domain.FileRecordRepository
+import top.sincs.sinjav.emby.EmbyClient
 import top.sincs.sinjav.organize.OrganizeParams
 import top.sincs.sinjav.organize.Organizer
 import top.sincs.sinjav.scan.ScanParams
@@ -23,6 +24,7 @@ class JobRunner(
     private val scrapeService: ScrapeService,
     private val organizer: Organizer,
     private val fileRecords: FileRecordRepository,
+    private val emby: EmbyClient,
 ) {
 
     private val log = LoggerFactory.getLogger(JobRunner::class.java)
@@ -37,6 +39,7 @@ class JobRunner(
     open fun runOrganize(jobId: Long, params: OrganizeParams) = wrap(jobId) {
         executeOrganize(jobId, params)
         jobs.finish(jobId, "completed")
+        refreshEmby(jobId)
     }
 
     @Async("jobExecutor")
@@ -45,13 +48,26 @@ class JobRunner(
         scrapeService.execute(jobId, params.scrapeParams())
         executeOrganize(jobId, params.organizeParams())
         jobs.finish(jobId, "completed")
+        refreshEmby(jobId)
+    }
+
+    /** 整理完成后触发 Emby 媒体库刷新（未配置 Emby 时跳过；刷新失败不影响整理结果） */
+    private fun refreshEmby(jobId: Long) {
+        if (!emby.isConfigured()) return
+        try {
+            emby.refreshLibrary()
+            log.info("任务 {} 整理完成，已触发 Emby 媒体库刷新", jobId)
+        } catch (e: Exception) {
+            log.warn("任务 {} 触发 Emby 刷新失败（不影响整理结果）: {}", jobId, e.message)
+            jobs.appendError(jobId, "Emby刷新", e.message ?: "unknown")
+        }
     }
 
     private fun executeOrganize(jobId: Long, params: OrganizeParams) {
         log.info(
             "整理开始 jobId={} 目标目录={} 模式={} 模板={} 冲突策略={}",
             jobId,
-            params.targetDir ?: "<全局设置>", params.mode ?: "<全局设置>",
+            params.targetDir ?: "<未指定>", params.mode ?: "<未指定>",
             params.namingTemplate ?: "<全局设置>", params.conflictPolicy ?: "<全局设置>",
         )
         if (!params.items.isNullOrEmpty()) {

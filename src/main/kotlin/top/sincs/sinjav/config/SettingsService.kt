@@ -42,8 +42,6 @@ class SettingsService(
             u.concurrency?.let { add("concurrency" to it.toString()) }
             u.timeoutMs?.let { add("timeoutMs" to it.toString()) }
             u.cfTimeoutMs?.let { add("cfTimeoutMs" to it.toString()) }
-            u.targetDir?.let { add("targetDir" to it) }
-            u.mode?.let { add("mode" to it) }
             u.namingTemplate?.let { add("namingTemplate" to it) }
             u.conflictPolicy?.let { add("conflictPolicy" to it) }
             u.generateNfo?.let { add("generateNfo" to it.toString()) }
@@ -55,6 +53,7 @@ class SettingsService(
             u.embyApiKey?.let { add("embyApiKey" to it) }
             u.embyProxyHost?.let { add("embyProxyHost" to it) }
             u.embyProxyPort?.let { add("embyProxyPort" to it.toString()) }
+            u.imagesTtlDays?.let { add("imagesTtlDays" to it.toString()) }
         }
         if (changes.isNotEmpty()) {
             log.info(
@@ -87,8 +86,6 @@ class SettingsService(
             "concurrency" -> props.scraper.concurrency = value.toIntOrNull() ?: 1
             "timeoutMs" -> props.scraper.timeoutMs = value.toLongOrNull() ?: 15000
             "cfTimeoutMs" -> props.scraper.cfTimeoutMs = value.toLongOrNull() ?: 60000
-            "targetDir" -> props.organize.targetDir = value
-            "mode" -> props.organize.mode = value
             "namingTemplate" -> props.organize.namingTemplate = value
             "conflictPolicy" -> props.organize.conflictPolicy = value
             "generateNfo" -> props.organize.generateNfo = value.toBooleanStrictOrNull() ?: true
@@ -100,6 +97,7 @@ class SettingsService(
             "embyApiKey" -> props.emby.apiKey = value
             "embyProxyHost" -> props.emby.proxyHost = value
             "embyProxyPort" -> props.emby.proxyPort = value.toIntOrNull() ?: 0
+            "imagesTtlDays" -> props.images.ttlDays = value.toIntOrNull() ?: 3
         }
     }
 }

@@ -126,6 +126,19 @@ class EmbyClient(
     /** 服务器信息（测试连接用） */
     fun serverInfo(): JsonNode = getJson("/System/Info")
 
+    /** Emby 是否已配置（服务地址 + API Key 均非空） */
+    fun isConfigured(): Boolean =
+        props.emby.baseUrl.trim().isNotBlank() && props.emby.apiKey.trim().isNotBlank()
+
+    /** 触发 Emby 全媒体库扫描（整理完成后调用；未配置时抛异常，调用方自行决定是否忽略） */
+    fun refreshLibrary() {
+        val resp = exchange("POST", "/Library/Refresh")
+        if (resp.statusCode() >= 400) {
+            throw IllegalStateException("Emby 媒体库刷新失败: HTTP ${resp.statusCode()}")
+        }
+        log.info("已触发 Emby 媒体库刷新")
+    }
+
     /** 应用只处理 JAV（电影），媒体库列表过滤掉剧集/音乐等无关类型 */
     private val relevantCollectionTypes = setOf("movies", "homevideos", "mixed", "")
 

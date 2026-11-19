@@ -70,9 +70,22 @@ data class EmbyRescrapePreviewDto(
     val current: EmbyItemDetailDto,
     /** 刮削得到的元数据（待确认应用） */
     val proposed: EmbyMetadataUpdate,
+    /** 多源对比：字段键 → 来源 id → 原文值（仅含该源有值的字段） */
+    val fields: Map<String, Map<String, String>> = emptyMap(),
+    /** 多源对比：字段键 → 合并规则的默认来源 id（该字段所有来源均无值时为 null） */
+    val defaults: Map<String, String?> = emptyMap(),
+    /** 多源对比：有结果的来源 id 列表（按 source-order 排序，供前端下拉选项） */
+    val sources: List<String> = emptyList(),
 )
 
 /** 刮削预览请求：自动识别失败时可手动指定番号 */
 data class EmbyRescrapePreviewRequest(
     val number: String? = null,
+)
+
+/** 多源对比重新刮削应用：按逐字段来源选择组装元数据并回写 Emby（留空字段不回写，manual 值视为最终文本不翻译） */
+data class EmbyRescrapeApplyRequest(
+    @field:jakarta.validation.constraints.NotBlank(message = "number 必填")
+    val number: String,
+    val fields: Map<String, ScrapeFieldChoice> = emptyMap(),
 )

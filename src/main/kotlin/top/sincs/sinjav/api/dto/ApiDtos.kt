@@ -36,9 +36,48 @@ data class ScrapeRequest(
     val numbers: List<String>? = null,
 )
 
+/** 多源对比刮削预览请求（单番号，同步返回各源原始结果） */
+data class ScrapePreviewRequest(
+    @field:jakarta.validation.constraints.NotBlank(message = "number 必填")
+    val number: String,
+)
+
+/**
+ * 多源对比刮削预览：fields[fieldKey][sourceId] = 该源抓到的原文值（仅含该源有值的字段）；
+ * defaults[fieldKey] = 按当前合并规则的默认来源（source-order 靠前的源优先，无值为 null）。
+ */
+data class ScrapePreviewResponse(
+    val number: String,
+    val sources: List<String>,
+    val fields: Map<String, Map<String, String>>,
+    val defaults: Map<String, String?>,
+)
+
+/** 单字段的来源选择：source=null 留空（清空该字段）；manual 使用 value 手动输入；其余为数据源 id，value 为该源原文 */
+data class ScrapeFieldChoice(
+    val source: String? = null,
+    val value: String? = null,
+)
+
+/** 多源对比刮削落库：逐字段应用用户选择的来源/手动值，翻译后写库并下载图片 */
+data class ScrapeApplyRequest(
+    @field:jakarta.validation.constraints.NotBlank(message = "number 必填")
+    val number: String,
+    /**
+     * 原记录番号（对比界面编辑番号后重刮场景）：与 number 不同时把该记录改用 number 落库
+     * （movies.number 与 file_records.number 同步更新）；省略或相同则无重命名。
+     */
+    val recordNumber: String? = null,
+    val fields: Map<String, ScrapeFieldChoice> = emptyMap(),
+)
+
 data class OrganizeRequest(
-    val targetDir: String? = null,
-    val mode: String? = null,
+    /** 目标目录：整理不再使用全局配置，每次整理必须指定 */
+    @field:jakarta.validation.constraints.NotBlank(message = "targetDir 必填")
+    val targetDir: String,
+    /** 整理方式：整理不再使用全局配置，每次整理必须指定 */
+    @field:jakarta.validation.constraints.NotBlank(message = "mode 必填")
+    val mode: String,
     val namingTemplate: String? = null,
     val conflictPolicy: String? = null,
     val generateNfo: Boolean? = null,
@@ -53,15 +92,19 @@ data class OrganizeItemRequest(
     val recordId: Long,
     /** 完整目标路径（目录+文件名）；省略时按命名模板渲染 */
     val targetPath: String? = null,
-    /** 整理方式覆盖；省略时使用请求级 mode / 全局配置 */
+    /** 整理方式覆盖；省略时使用请求级 mode */
     val mode: String? = null,
 )
 
 data class OrganizePreviewRequest(
     @field:jakarta.validation.constraints.NotEmpty(message = "recordIds 不能为空")
     val recordIds: List<Long>,
-    val targetDir: String? = null,
-    val mode: String? = null,
+    /** 目标目录：每次预览必须指定 */
+    @field:jakarta.validation.constraints.NotBlank(message = "targetDir 必填")
+    val targetDir: String,
+    /** 整理方式：每次预览必须指定 */
+    @field:jakarta.validation.constraints.NotBlank(message = "mode 必填")
+    val mode: String,
     val namingTemplate: String? = null,
     val conflictPolicy: String? = null,
 )
@@ -86,8 +129,6 @@ data class SettingsUpdate(
     val concurrency: Int? = null,
     val timeoutMs: Long? = null,
     val cfTimeoutMs: Long? = null,
-    val targetDir: String? = null,
-    val mode: String? = null,
     val namingTemplate: String? = null,
     val conflictPolicy: String? = null,
     val generateNfo: Boolean? = null,
@@ -102,6 +143,8 @@ data class SettingsUpdate(
     /** Emby 专用 HTTP 代理（留空直连） */
     val embyProxyHost: String? = null,
     val embyProxyPort: Int? = null,
+    /** 图片缓存过期天数（0 = 永久保留） */
+    val imagesTtlDays: Int? = null,
 )
 
 // ---------- 响应 ----------
@@ -200,12 +243,14 @@ data class SettingsDto(
     val proxyHost: String, val proxyPort: Int, val requestIntervalMs: Long, val concurrency: Int,
     val timeoutMs: Long, val cfTimeoutMs: Long,
     val cfProxyUrl: String, val cfProxySources: String,
-    val targetDir: String, val mode: String, val namingTemplate: String, val conflictPolicy: String,
+    val namingTemplate: String, val conflictPolicy: String,
     val generateNfo: Boolean, val downloadImages: Boolean,
     val deeplApiKey: String, val baiduTranslateAppId: String, val baiduTranslateSecret: String,
     val embyBaseUrl: String, val embyApiKey: String,
     val embyProxyHost: String, val embyProxyPort: Int,
     val videoExtensions: String, val minFileSizeMb: Long,
+    /** 图片缓存过期天数（0 = 永久保留） */
+    val imagesTtlDays: Int,
 ) {
     companion object {
         fun from(props: AppProperties) = SettingsDto(
@@ -215,7 +260,6 @@ data class SettingsDto(
             cfProxyUrl = props.scraper.cfProxyUrl, cfProxySources = props.scraper.cfProxySources,
             requestIntervalMs = props.scraper.requestIntervalMs, concurrency = props.scraper.concurrency,
             timeoutMs = props.scraper.timeoutMs, cfTimeoutMs = props.scraper.cfTimeoutMs,
-            targetDir = props.organize.targetDir, mode = props.organize.mode,
             namingTemplate = props.organize.namingTemplate, conflictPolicy = props.organize.conflictPolicy,
             generateNfo = props.organize.generateNfo, downloadImages = props.organize.downloadImages,
             deeplApiKey = props.scraper.deeplApiKey,
@@ -224,6 +268,7 @@ data class SettingsDto(
             embyBaseUrl = props.emby.baseUrl, embyApiKey = props.emby.apiKey,
             embyProxyHost = props.emby.proxyHost, embyProxyPort = props.emby.proxyPort,
             videoExtensions = props.scan.videoExtensions, minFileSizeMb = props.scan.minFileSizeMb,
+            imagesTtlDays = props.images.ttlDays,
         )
     }
 }

@@ -219,6 +219,107 @@ paths:
               schema:
                 $ref: '#/components/schemas/Problem'
 
+  /api/v1/scrape/preview:
+    post:
+      tags: [scrape]
+      operationId: scrapePreview
+      summary: 多源对比刮削预览（单番号，同步）
+      description: |
+        并发抓取全部数据源（不落库），返回每个字段各来源的原文值与按合并规则的默认来源。
+        供前端对比界面逐字段选择来源后再调用 /scrape/apply 落库。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ScrapePreviewRequest'
+      responses:
+        '200':
+          description: 各源刮削结果对比
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ScrapePreviewResponse'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+
+  /api/v1/scrape/apply:
+    post:
+      tags: [scrape]
+      operationId: scrapeApply
+      summary: 多源对比刮削落库（单番号，同步）
+      description: |
+        按逐字段的来源选择（各来源 id / 留空 / manual 手动输入）组装元数据，
+        标题与简介按常规刮削规则翻译（manual 值视为最终文本不翻译），
+        写库并把影片置为 scraped，同步下载封面/剧照。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ScrapeApplyRequest'
+      responses:
+        '200':
+          description: 落库完成
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  number: { type: string }
+                  status: { type: string, enum: [scraped] }
+        '400':
+          $ref: '#/components/responses/ValidationError'
+
+  /api/v1/scrape/manual:
+    post:
+      tags: [scrape]
+      operationId: scrapeManual
+      summary: 手动落库（单番号，同步）：手动录入元数据并上传封面/剧照
+      description: |
+        不抓取、不翻译：用户手动输入元数据（番号必填），上传的封面/剧照字节直接写入本地图片目录
+        （poster.jpg / previewN.jpg，上传文件优先于 URL 下载结果）。标题落库为「番号-标题」，
+        影片置为 scraped（source=manual），之后可正常整理。目标记录不存在时自动建 pending。
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [number]
+              properties:
+                number: { type: string, description: 番号（后端自动规范化） }
+                title: { type: string, nullable: true, description: 标题（视为中文标题，落库为「番号-标题」） }
+                titleOrig: { type: string, nullable: true, description: 原标题（NFO originaltitle 用） }
+                plot: { type: string, nullable: true, description: 简介 }
+                releaseDate: { type: string, nullable: true, description: 发行日期 yyyy-MM-dd（无法解析时忽略） }
+                durationMin: { type: integer, nullable: true, description: 时长（分钟） }
+                director: { type: string, nullable: true }
+                maker: { type: string, nullable: true, description: 厂商 }
+                label: { type: string, nullable: true, description: 发行商 }
+                series: { type: string, nullable: true, description: 系列 }
+                actresses: { type: string, description: 女优，逗号/顿号/斜杠/换行分隔 }
+                genres: { type: string, description: 类别，逗号/顿号/斜杠/换行分隔 }
+                coverUrl: { type: string, nullable: true, description: 封面 URL（可选，与上传并存时上传优先） }
+                previewUrls: { type: string, nullable: true, description: 剧照 URL 列表（可选，逗号/换行分隔） }
+                cover: { type: string, format: binary, description: 上传封面文件（可选，保存为 poster.jpg） }
+                previews:
+                  type: array
+                  description: 上传剧照文件（可选，按顺序保存为 previewN.jpg）
+                  items: { type: string, format: binary }
+      responses:
+        '200':
+          description: 落库完成
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  number: { type: string, description: 规范化后的番号 }
+                  status: { type: string, enum: [scraped] }
+        '400':
+          $ref: '#/components/responses/ValidationError'
+
   /api/v1/organize:
     post:
       tags: [organize]
@@ -563,6 +664,23 @@ paths:
         '400':
           $ref: '#/components/responses/ValidationError'
 
+  /api/v1/settings/images/cleanup:
+    post:
+      tags: [settings]
+      operationId: cleanupImageCache
+      summary: 手动清理过期图片缓存
+      description: 按设置页配置的 TTL（imagesTtlDays，0 = 永久保留）删除 data/images 下的过期文件并移除空目录；定时任务每日 04:00 也会自动执行。重新刮削会重写图片文件（mtime 更新，自动续期）。
+      responses:
+        '200':
+          description: 清理结果
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  files: { type: integer, description: 删除的文件数 }
+                  bytes: { type: integer, description: 释放的字节数 }
+
   /api/v1/emby/status:
     get:
       tags: [emby]
@@ -652,12 +770,12 @@ paths:
     post:
       tags: [emby]
       operationId: previewEmbyRescrape
-      summary: 重新刮削预览（本地管线）：识别番号 → 本应用刮削 → 返回刮削前后对比（不推送，同步执行）
+      summary: 重新刮削预览（本地管线）：识别番号 → 并发抓全源 → 返回各源原始值与前后对比（不推送，同步执行）
       description: |
         从条目文件名/原标题/标题提取番号（识别链依次尝试；请求体 number 非空时用手动番号替代识别），
-        调用本项目刮削管线（多数据源+翻译），返回「当前 Emby 元数据 + 刮削结果」供前端展示差异并
-        勾选确认；确认后由 PUT /emby/items/{id}/metadata 应用。同步执行，受刮削限速影响可能耗时数十秒。
-        无法识别番号返回 400；所有数据源刮削失败返回 500。
+        调用本项目刮削管线并发抓取全部数据源，返回「当前 Emby 元数据 + 各源原始字段值(fields/defaults) +
+        合并后的待应用元数据(proposed)」供前端逐字段选择来源；确认后调 /emby/items/{id}/rescrape/apply 回写。
+        同步执行，受刮削限速影响可能耗时数十秒。无法识别番号返回 400；所有数据源刮削失败返回 500。
       parameters:
         - { name: id, in: path, required: true, schema: { type: string } }
       requestBody:
@@ -677,6 +795,33 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/EmbyRescrapePreview'
+
+  /api/v1/emby/items/{id}/rescrape/apply:
+    post:
+      tags: [emby]
+      operationId: applyEmbyRescrape
+      summary: 重新刮削应用（本地管线）：按逐字段来源选择组装元数据并回写 Emby（同步）
+      description: |
+        fields 与 /scrape/apply 同结构：来源 id 选择时 value 为该源原文；manual 值视为最终文本不翻译；
+        留空（null/缺省）的字段不回写。标题翻译为名称、原文存原标题；简介译中文；
+        厂商/厂牌→工作室；女优/系列/导演/厂牌→标签；类别过滤画质标签并译名。
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EmbyRescrapeApplyRequest'
+      responses:
+        '200':
+          description: 已应用的元数据（回写内容）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmbyMetadataUpdate'
+        '400':
+          $ref: '#/components/responses/ValidationError'
 
   /api/v1/emby/items/{id}/images/primary:
     get:
@@ -905,17 +1050,84 @@ components:
           description: 指定番号列表；省略时刮削全部「未刮削」番号
       required: []
 
+    ScrapePreviewRequest:
+      type: object
+      description: 多源对比刮削预览请求（单番号）
+      properties:
+        number:
+          type: string
+          description: 番号（自动规范化）
+      required: [number]
+
+    ScrapePreviewResponse:
+      type: object
+      description: 各数据源刮削结果对比
+      properties:
+        number:
+          type: string
+        sources:
+          type: array
+          items:
+            type: string
+          description: 有结果的来源 id（按 source-order 排序）
+        fields:
+          type: object
+          description: 字段键 → 来源 id → 原文值（仅含该来源有值的字段）。字段键：title plot releaseDate durationMin director maker label series actresses genres coverUrl previewUrls
+          additionalProperties:
+            type: object
+            additionalProperties:
+              type: string
+        defaults:
+          type: object
+          description: 字段键 → 合并规则的默认来源 id（该字段所有来源均无值时为 null）
+          additionalProperties:
+            type: string
+            nullable: true
+      required: [number, sources, fields, defaults]
+
+    ScrapeFieldChoice:
+      type: object
+      description: 单字段来源选择
+      properties:
+        source:
+          type: string
+          nullable: true
+          description: 数据源 id；null=留空（清空该字段）；manual=手动输入
+        value:
+          type: string
+          nullable: true
+          description: 最终值：来源选择时为该来源原文，manual 时为用户输入。列表字段（actresses/genres/previewUrls）多值用逗号/换行分隔
+      required: []
+
+    ScrapeApplyRequest:
+      type: object
+      description: 多源对比刮削落库请求
+      properties:
+        number:
+          type: string
+          description: 落库番号（对比界面可编辑修正识别错误，后端自动规范化）
+        recordNumber:
+          type: string
+          nullable: true
+          description: 原记录番号；与 number 不同时把该记录改用 number 落库（movies/file_records 同步改番号），新番号已存在则 400
+        fields:
+          type: object
+          description: 字段键 → 来源选择（缺省字段视为留空）
+          additionalProperties:
+            $ref: '#/components/schemas/ScrapeFieldChoice'
+      required: [number]
+
     OrganizeRequest:
       type: object
       description: 整理请求
       properties:
         targetDir:
           type: string
-          description: 目标目录绝对路径（省略时使用全局配置）
+          description: 目标目录绝对路径（必填，整理不再使用全局配置）
         mode:
           type: string
           enum: [hardlink, symlink, move, copy]
-          description: 整理方式（省略时使用全局配置）
+          description: 整理方式（必填，整理不再使用全局配置）
         namingTemplate:
           type: string
           description: 命名模板（省略时使用全局配置）。可用占位符：{number} {title} {date} {maker} {series} {actress}（多女优取第一个）
@@ -942,7 +1154,7 @@ components:
             记录已是 organized 状态时视为重整（先清理原整理结果）。
           items:
             $ref: '#/components/schemas/OrganizeItemRequest'
-      required: []
+      required: [targetDir, mode]
 
     OrganizeItemRequest:
       type: object
@@ -958,7 +1170,7 @@ components:
         mode:
           type: string
           enum: [hardlink, symlink, move, copy]
-          description: 整理方式覆盖；省略时使用请求级 mode / 全局配置。原整理为移动的记录重整时不能使用链接模式
+          description: 整理方式覆盖；省略时使用请求级 mode。原整理为移动的记录重整时不能使用链接模式
       required: [recordId]
 
     OrganizePreviewRequest:
@@ -973,11 +1185,11 @@ components:
           description: 要预览的文件记录 id 列表
         targetDir:
           type: string
-          description: 目标目录绝对路径（省略时使用全局配置）
+          description: 目标目录绝对路径（必填，整理不再使用全局配置）
         mode:
           type: string
           enum: [hardlink, symlink, move, copy]
-          description: 整理方式（省略时使用全局配置）
+          description: 整理方式（必填，整理不再使用全局配置）
         namingTemplate:
           type: string
           description: 命名模板（省略时使用全局配置）
@@ -985,7 +1197,7 @@ components:
           type: string
           enum: [skip, overwrite, rename]
           description: 冲突策略（省略时使用全局配置）
-      required: [recordIds]
+      required: [recordIds, targetDir, mode]
 
     OrganizePreviewItem:
       type: object
@@ -1104,11 +1316,6 @@ components:
         concurrency:
           type: integer
           description: 刮削全局并发数
-        targetDir:
-          type: string
-        mode:
-          type: string
-          enum: [hardlink, symlink, move, copy]
         namingTemplate:
           type: string
         conflictPolicy:
@@ -1118,6 +1325,9 @@ components:
           type: boolean
         downloadImages:
           type: boolean
+        imagesTtlDays:
+          type: integer
+          description: 图片缓存过期天数（0 = 永久保留，默认 3）
         embyBaseUrl:
           type: string
           description: Emby 服务地址（如 http://127.0.0.1:8096）
@@ -1392,11 +1602,6 @@ components:
           type: integer
         concurrency:
           type: integer
-        targetDir:
-          type: string
-        mode:
-          type: string
-          enum: [hardlink, symlink, move, copy]
         namingTemplate:
           type: string
         conflictPolicy:
@@ -1406,6 +1611,9 @@ components:
           type: boolean
         downloadImages:
           type: boolean
+        imagesTtlDays:
+          type: integer
+          description: 图片缓存过期天数（0 = 永久保留，默认 3）
         deeplApiKey:
           type: string
           description: DeepL API key（免费 key 以 :fx 结尾）；配置后翻译优先使用 DeepL
@@ -1499,6 +1707,38 @@ components:
         proposed:
           $ref: '#/components/schemas/EmbyMetadataUpdate'
           description: 刮削得到的元数据（待确认应用）
+        fields:
+          type: object
+          description: 多源对比：字段键 → 来源 id → 原文值（仅含该源有值的字段，与 /scrape/preview 同一套字段键）
+          additionalProperties:
+            type: object
+            additionalProperties:
+              type: string
+        defaults:
+          type: object
+          description: 多源对比：字段键 → 合并规则的默认来源 id（该字段所有来源均无值时为 null）
+          additionalProperties:
+            type: string
+            nullable: true
+        sources:
+          type: array
+          description: 多源对比：有结果的来源 id 列表（按 source-order 排序，供前端下拉选项）
+          items:
+            type: string
+
+    EmbyRescrapeApplyRequest:
+      type: object
+      description: 多源对比重新刮削应用：按逐字段来源选择组装元数据并回写 Emby（留空字段不回写，manual 值视为最终文本不翻译）
+      properties:
+        number:
+          type: string
+          description: 预览时识别/手动输入的番号
+        fields:
+          type: object
+          description: 字段键 → 来源选择（各来源 id / 留空 / manual），与 /scrape/apply 的 fields 同结构
+          additionalProperties:
+            $ref: '#/components/schemas/ScrapeFieldChoice'
+      required: [number]
 
     # ---------- 通用 ----------
     PageMeta:

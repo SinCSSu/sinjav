@@ -72,7 +72,9 @@ class ScrapeService(
 
                         movies.markScraped(
                             number = number,
-                            title = titleZh ?: meta.title, titleZh = meta.titleZh, titleOrig = titleOrig,
+                            // 元数据标题统一为「番号-中文标题」（title_orig 保留原题，NFO originaltitle / {title} 模板用）
+                            title = (titleZh ?: meta.title)?.let { "$number-$it" },
+                            titleZh = meta.titleZh, titleOrig = titleOrig,
                             releaseDate = meta.releaseDate,
                             director = meta.director, maker = meta.maker, label = meta.label,
                             series = meta.series, durationMin = meta.durationMin,

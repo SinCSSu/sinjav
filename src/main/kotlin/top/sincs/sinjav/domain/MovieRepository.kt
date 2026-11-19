@@ -105,6 +105,21 @@ class MovieRepository(private val jdbc: NamedParameterJdbcTemplate) {
         )
     }
 
+    /**
+     * 重命名番号（多源对比界面改番号后落库）：movies.number 与 file_records.number 同步更新。
+     * 调用方需保证：原番号记录存在、新番号在库中不存在；图片目录沿用新番号由 downloadAll 重建。
+     */
+    fun rename(oldNumber: String, newNumber: String) {
+        jdbc.update(
+            "UPDATE movies SET number = :nn, updated_at = CURRENT_TIMESTAMP WHERE number = :on",
+            mapOf("nn" to newNumber, "on" to oldNumber),
+        )
+        jdbc.update(
+            "UPDATE file_records SET number = :nn WHERE number = :on",
+            mapOf("nn" to newNumber, "on" to oldNumber),
+        )
+    }
+
     /** 删除影片记录及其关联（女优/类型关联表），不删除 actress/genre 主数据（可能被其他影片共用）。返回是否存在并删除 */
     fun delete(number: String): Boolean {
         val movie = findByNumber(number) ?: return false

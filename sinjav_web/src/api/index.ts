@@ -1,4 +1,5 @@
 import type {
+  EmbyRescrapeApplyRequest,
   EmbyItemDetail,
   EmbyLibrary,
   EmbyMetadataUpdate,
@@ -28,6 +29,8 @@ import type {
   ScanPreviewRequest,
   ScanPreviewResponse,
   ScanRequest,
+  ScrapeApplyRequest,
+  ScrapePreviewResponse,
   ScrapeRequest,
   Settings,
   SettingsUpdate,
@@ -65,11 +68,13 @@ export function embyPosterUrl(id: string): string {
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const isForm = init?.body instanceof FormData
   let res: Response
   try {
     res = await fetch(BASE + path, {
-      headers: { 'Content-Type': 'application/json' },
       ...init,
+      // FormData 交给浏览器自动设置 multipart boundary，不能手动指定 Content-Type
+      headers: isForm ? undefined : { 'Content-Type': 'application/json', ...init?.headers },
     })
   } catch {
     throw new Error('无法连接后端服务（localhost:8656）')
@@ -151,6 +156,18 @@ export const api = {
   triggerScrape(body: ScrapeRequest) {
     return post<JobAccepted>('/scrape', body)
   },
+  /** 多源对比刮削预览：同步返回各源原始字段值与合并默认来源（不落库） */
+  scrapePreview(body: { number: string }) {
+    return post<ScrapePreviewResponse>('/scrape/preview', body)
+  },
+  /** 多源对比刮削落库：按逐字段来源选择写库并下载图片 */
+  scrapeApply(body: ScrapeApplyRequest) {
+    return post<{ number: string; status: string }>('/scrape/apply', body)
+  },
+  /** 手动落库：手动录入元数据并上传封面/剧照（multipart，同步落库，不抓取不翻译） */
+  scrapeManual(form: FormData) {
+    return request<{ number: string; status: string }>('/scrape/manual', { method: 'POST', body: form })
+  },
   triggerOrganize(body: OrganizeRequest) {
     return post<JobAccepted>('/organize', body)
   },
@@ -224,6 +241,10 @@ export const api = {
   updateSettings(body: SettingsUpdate) {
     return request<Settings>('/settings', { method: 'PUT', body: JSON.stringify(body) })
   },
+  /** 手动清理过期图片缓存（按设置的 TTL），返回删除的文件数与字节数 */
+  cleanupImageCache() {
+    return post<{ files: number; bytes: number }>('/settings/images/cleanup', {})
+  },
 
   // Emby（实时代理，不落库）
   getEmbyStatus() {
@@ -243,10 +264,14 @@ export const api = {
   updateEmbyMetadata(id: string, body: EmbyMetadataUpdate) {
     return put<EmbyItemDetail>(`/emby/items/${encodeURIComponent(id)}/metadata`, body)
   },
-  /** 重新刮削预览：识别番号（自动识别失败时可手动指定 number）→ 本应用刮削 → 返回刮削前后对比 */
+  /** 重新刮削预览：识别番号（自动识别失败时可手动指定 number）→ 并发抓全源 → 返回各源原始值与前后对比 */
   previewEmbyRescrape(id: string, number?: string) {
     return post<EmbyRescrapePreview>(`/emby/items/${encodeURIComponent(id)}/rescrape/preview`, {
       number: number?.trim() || undefined,
     })
+  },
+  /** 重新刮削应用：按逐字段来源选择组装元数据并回写 Emby（留空字段不回写） */
+  applyEmbyRescrape(id: string, body: EmbyRescrapeApplyRequest) {
+    return post<EmbyMetadataUpdate>(`/emby/items/${encodeURIComponent(id)}/rescrape/apply`, body)
   },
 }

@@ -102,22 +102,14 @@
       <el-card shadow="never" class="settings-card">
         <template #header>整理设置</template>
         <el-form label-width="140px" label-position="left">
-          <el-form-item label="目标目录">
-            <el-input v-model="form.targetDir" placeholder="如 E:\Library" style="max-width: 500px" />
-          </el-form-item>
-          <el-form-item label="整理方式">
-            <el-select v-model="form.mode" style="width: 200px">
-              <el-option label="硬链接" value="hardlink" />
-              <el-option label="软链接" value="symlink" />
-              <el-option label="移动" value="move" />
-              <el-option label="复制" value="copy" />
-            </el-select>
+          <el-form-item>
+            <span class="hint">目标目录与整理方式不再全局配置，每次整理时在整理弹窗 / 流水线中指定</span>
           </el-form-item>
           <el-form-item label="命名模板">
             <el-input
               v-model="form.namingTemplate"
               style="max-width: 500px"
-              placeholder="{number}/{number} - {title}"
+              placeholder="{number}/{number}"
             />
             <div class="hint">
               占位符：{number} {title} {date} {maker} {series} {actress}；最后一段为文件基名，之前为子目录
@@ -135,6 +127,15 @@
           </el-form-item>
           <el-form-item label="下载图片">
             <el-switch v-model="form.downloadImages" />
+          </el-form-item>
+          <el-divider content-position="left">图片缓存</el-divider>
+          <el-form-item label="缓存有效期">
+            <el-input-number v-model="form.imagesTtlDays" :min="0" :max="365" />
+            <span class="hint">天；过期缓存图片每日 04:00 自动清理，重新刮削的影片自动续期；0 = 永久保留</span>
+          </el-form-item>
+          <el-form-item label=" ">
+            <el-button :loading="cleaning" @click="cleanupCache">清理缓存</el-button>
+            <span v-if="cleanResult" class="hint">{{ cleanResult }}</span>
           </el-form-item>
         </el-form>
       </el-card>
@@ -186,6 +187,8 @@ const loading = ref(true)
 const saving = ref(false)
 const testing = ref(false)
 const testResult = ref('')
+const cleaning = ref(false)
+const cleanResult = ref('')
 const original = ref<SettingsUpdate>({})
 
 const form = reactive<SettingsUpdate>({})
@@ -292,6 +295,29 @@ async function testConnection() {
     testResult.value = e instanceof Error ? e.message : String(e)
   } finally {
     testing.value = false
+  }
+}
+
+/** 手动清理过期图片缓存（按当前保存的 TTL） */
+function formatSize(bytes: number): string {
+  if (bytes >= 1 << 30) return `${(bytes / 1e9).toFixed(1)} GB`
+  if (bytes >= 1 << 20) return `${(bytes / 1e6).toFixed(1)} MB`
+  if (bytes >= 1 << 10) return `${(bytes / 1e3).toFixed(1)} KB`
+  return `${bytes} B`
+}
+
+async function cleanupCache() {
+  cleanResult.value = ''
+  cleaning.value = true
+  try {
+    const res = await api.cleanupImageCache()
+    cleanResult.value = res.files > 0
+      ? `已删除 ${res.files} 个过期文件（${formatSize(res.bytes)}）`
+      : '没有过期缓存'
+  } catch (e) {
+    cleanResult.value = e instanceof Error ? e.message : String(e)
+  } finally {
+    cleaning.value = false
   }
 }
 

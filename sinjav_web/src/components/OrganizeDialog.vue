@@ -16,7 +16,7 @@
             <DirTreeInput v-model="targetDir" />
           </el-form-item>
           <el-form-item label="整理方式">
-            <el-select v-model="mode" clearable placeholder="留空使用全局配置" style="width: 100%">
+            <el-select v-model="mode" placeholder="请选择整理方式" style="width: 100%">
               <el-option
                 v-for="(label, value) in linkModeLabels"
                 :key="value"
@@ -199,12 +199,13 @@ import type {
   LinkMode,
   OrganizePreviewItem,
   OrganizeRecordItem,
-  Settings,
 } from '../api/types'
 import { linkModeLabels } from '../utils'
 import DirTreeInput from './DirTreeInput.vue'
 
 const visible = defineModel<boolean>({ default: false })
+/** 卡片快捷整理入口：打开弹窗时按番号预选待整理的文件记录 */
+const props = defineProps<{ presetNumbers?: string[] }>()
 const emit = defineEmits<{ created: [] }>()
 
 const PAGE_SIZE = 60
@@ -214,7 +215,6 @@ const targetDir = ref('')
 const mode = ref<LinkMode | ''>('')
 const namingTemplate = ref('')
 const conflictPolicy = ref<'' | 'skip' | 'overwrite' | 'rename'>('')
-const globalSettings = ref<Settings | null>(null)
 
 // 中列：媒体列表
 const pendingRecords = ref<OrganizeRecordItem[]>([])
@@ -256,7 +256,16 @@ async function onOpen() {
   pendingPage.value = 0
   organizedLoaded.value = false
   organizedOpen.value = []
-  loadPending(true)
+  await loadPending(true)
+  // 快捷入口：按番号预选该影片的待整理文件记录
+  const preset = props.presetNumbers ?? []
+  if (preset.length) {
+    selected.value = new Set(
+      pendingRecords.value
+        .filter((r) => r.number && preset.includes(r.number))
+        .map((r) => r.recordId),
+    )
+  }
   // 已整理总数用于折叠标题展示（只取 total）
   try {
     const p = await api.listOrganizeRecords('organized', 1, 1)
@@ -264,10 +273,6 @@ async function onOpen() {
   } catch {
     /* 打开时获取失败不阻塞 */
   }
-  api
-    .getSettings()
-    .then((s) => (globalSettings.value = s))
-    .catch(() => (globalSettings.value = null))
 }
 
 async function loadPending(reset: boolean) {
@@ -343,14 +348,28 @@ function modeOptionsFor(p: OrganizePreviewItem): LinkMode[] {
 
 function currentParams() {
   return {
-    targetDir: targetDir.value.trim() || undefined,
-    mode: (mode.value || undefined) as LinkMode | undefined,
+    targetDir: targetDir.value.trim(),
+    mode: mode.value as LinkMode,
     namingTemplate: namingTemplate.value.trim() || undefined,
     conflictPolicy: (conflictPolicy.value || undefined) as 'skip' | 'overwrite' | 'rename' | undefined,
   }
 }
 
+/** 目标目录与整理方式每次整理必须指定（不再有全局配置兜底） */
+function validateParams(): boolean {
+  if (!targetDir.value.trim()) {
+    ElMessage.warning('请先选择目标目录')
+    return false
+  }
+  if (!mode.value) {
+    ElMessage.warning('请先选择整理方式')
+    return false
+  }
+  return true
+}
+
 async function previewSelected() {
+  if (!validateParams()) return
   previewing.value = true
   try {
     const res = await api.previewOrganize({ recordIds: [...selected.value], ...currentParams() })
@@ -362,9 +381,9 @@ async function previewSelected() {
   }
 }
 
-/** 计算某条记录生效的整理方式（预览覆盖 > 左列参数 > 全局配置） */
+/** 计算某条记录生效的整理方式（预览覆盖 > 左列参数） */
 function effectiveMode(p?: OrganizePreviewItem): LinkMode | undefined {
-  return p?.mode || (mode.value || undefined) || globalSettings.value?.mode || undefined
+  return p?.mode || (mode.value || undefined) || undefined
 }
 
 function validateReorganize(ids: number[], previewMap: Map<number, OrganizePreviewItem>): string | null {
@@ -404,6 +423,7 @@ async function submitOrganize(body: Parameters<typeof api.triggerOrganize>[0], r
 }
 
 async function organizeSelected() {
+  if (!validateParams()) return
   const ids = [...selected.value]
   const previewMap = new Map(previews.value.map((p) => [p.recordId, p]))
   const invalid = validateReorganize(ids, previewMap)
@@ -424,6 +444,7 @@ async function organizeSelected() {
 }
 
 async function organizeAll() {
+  if (!validateParams()) return
   await submitOrganize(currentParams(), 0)
 }
 </script>

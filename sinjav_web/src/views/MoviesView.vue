@@ -98,6 +98,16 @@
               <span v-if="m.releaseDate">{{ m.releaseDate }}</span>
             </div>
             <div v-if="m.plot" class="plot" :title="m.plot">{{ m.plot }}</div>
+            <div class="card-actions">
+              <template v-if="m.status === 'scraped'">
+                <el-button size="small" @click.stop="quickScrape(m.number)">重新刮削</el-button>
+                <el-button size="small" type="primary" @click.stop="quickOrganize(m.number)">整理</el-button>
+              </template>
+              <template v-else>
+                <el-button size="small" type="primary" @click.stop="quickScrape(m.number)">刮削</el-button>
+                <el-button size="small" @click.stop="quickManual(m.number)">手动落库</el-button>
+              </template>
+            </div>
           </div>
         </div>
       </div>
@@ -135,13 +145,26 @@
       />
     </div>
 
-    <MovieDetailDrawer v-model="detailVisible" :number="detailNumber" />
+    <MovieDetailDrawer
+      v-model="detailVisible"
+      :number="detailNumber"
+      @scrape="quickScrape(detailNumber)"
+      @organize="quickOrganize(detailNumber)"
+      @manual="quickManual(detailNumber)"
+    />
     <EmbyItemDrawer v-model="embyDetailVisible" :item-id="embyDetailId" />
+    <ScrapeDialog v-model="showScrape" :preset-number="scrapePreset || undefined" @created="load" />
+    <ManualEntryDialog v-model="showManual" :preset-number="manualPreset || undefined" @created="load" />
+    <OrganizeDialog
+      v-model="showOrganize"
+      :preset-numbers="organizePreset.length ? organizePreset : undefined"
+      @created="load"
+    />
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { Delete as DeleteIcon, Search as SearchIcon, SortDown as SortDownIcon, SortUp as SortUpIcon } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { api, embyPosterUrl, imgFallback, imgProxy, localImg } from '../api'
@@ -149,6 +172,9 @@ import type { EmbyItemSummary, EmbyLibrary, MovieSort, MovieStatus, MovieSummary
 import { movieStatusLabels, movieStatusTagTypes } from '../utils'
 import MovieDetailDrawer from '../components/MovieDetailDrawer.vue'
 import EmbyItemDrawer from '../components/EmbyItemDrawer.vue'
+import ScrapeDialog from '../components/ScrapeDialog.vue'
+import ManualEntryDialog from '../components/ManualEntryDialog.vue'
+import OrganizeDialog from '../components/OrganizeDialog.vue'
 
 const source = ref<'local' | 'emby'>('local')
 
@@ -178,6 +204,46 @@ const detailVisible = ref(false)
 const detailNumber = ref('')
 const embyDetailVisible = ref(false)
 const embyDetailId = ref('')
+
+// 卡片快捷刮削/整理
+const showScrape = ref(false)
+const scrapePreset = ref('')
+const showManual = ref(false)
+const manualPreset = ref('')
+const showOrganize = ref(false)
+const organizePreset = ref<string[]>([])
+
+/** 卡片/详情抽屉刮削、重新刮削：打开刮削弹窗并直接进入该影片的多源对比界面 */
+function quickScrape(number: string) {
+  if (!number) return
+  scrapePreset.value = number
+  showScrape.value = true
+}
+
+/** 卡片/详情抽屉手动落库：打开手动录入弹窗（预填番号） */
+function quickManual(number: string) {
+  if (!number) return
+  manualPreset.value = number
+  showManual.value = true
+}
+
+/** 卡片/详情抽屉整理：打开整理弹窗并预选该影片的待整理文件记录 */
+function quickOrganize(number: string) {
+  if (!number) return
+  organizePreset.value = [number]
+  showOrganize.value = true
+}
+
+// 弹窗关闭后清空预选目标，避免下次手动打开时残留
+watch(showScrape, (v) => {
+  if (!v) scrapePreset.value = ''
+})
+watch(showManual, (v) => {
+  if (!v) manualPreset.value = ''
+})
+watch(showOrganize, (v) => {
+  if (!v) organizePreset.value = []
+})
 
 function search() {
   page.value = 1
@@ -312,6 +378,8 @@ onMounted(load)
   -webkit-backdrop-filter: var(--glass-blur);
   box-shadow: var(--glass-shadow);
   transition: transform 0.2s ease, box-shadow 0.2s ease;
+  display: flex;
+  flex-direction: column;
 }
 .movie-card:hover {
   transform: translateY(-3px);
@@ -355,6 +423,9 @@ onMounted(load)
 }
 .info {
   padding: 8px 10px 10px;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
 }
 .number {
   font-family: Consolas, monospace;
@@ -402,5 +473,12 @@ onMounted(load)
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
+}
+.card-actions {
+  margin-top: auto;
+  padding-top: 8px;
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
 }
 </style>

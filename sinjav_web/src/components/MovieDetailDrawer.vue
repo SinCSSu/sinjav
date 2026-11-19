@@ -14,9 +14,11 @@
           <div class="cover-wrap">
             <img
               v-if="detail.coverUrl"
+              class="zoomable"
               :src="localImg(detail.number, 'poster.jpg')"
               alt=""
               @error="imgFallback($event, imgProxy(detail.coverUrl))"
+              @click="openViewer([imgProxy(detail.coverUrl)], 0)"
             />
             <div v-else class="cover-placeholder">{{ detail.number }}</div>
           </div>
@@ -26,6 +28,16 @@
               <el-tag size="small" :type="movieStatusTagTypes[detail.status]">
                 {{ movieStatusLabels[detail.status] }}
               </el-tag>
+              <span class="hero-actions">
+                <template v-if="detail.status === 'scraped'">
+                  <el-button size="small" @click="emit('scrape')">重新刮削</el-button>
+                  <el-button size="small" type="primary" @click="emit('organize')">整理</el-button>
+                </template>
+                <template v-else>
+                  <el-button size="small" type="primary" @click="emit('scrape')">刮削</el-button>
+                  <el-button size="small" @click="emit('manual')">手动落库</el-button>
+                </template>
+              </span>
             </div>
             <h3 class="title">{{ detail.title || '—' }}</h3>
             <div
@@ -95,16 +107,15 @@
           :image-size="60"
         />
         <div v-else class="preview-grid">
-          <el-image
+          <img
             v-for="(url, i) in detail.previewUrls"
             :key="url"
             :src="localImg(detail.number, `preview${i + 1}.jpg`)"
-            :initial-index="i"
-            fit="cover"
-            :preview-src-list="detail.previewUrls.map(imgProxy)"
-            :hide-on-click-modal="true"
             loading="lazy"
-            class="preview-img"
+            alt=""
+            class="preview-img zoomable"
+            @error="imgFallback($event, imgProxy(url))"
+            @click="openViewer(detail.previewUrls.map(imgProxy), i)"
           />
         </div>
 
@@ -135,12 +146,19 @@
       </template>
     </template>
   </el-drawer>
+  <ImagePreviewViewer
+    :visible="viewerVisible"
+    :urls="viewerUrls"
+    :initial-index="viewerIndex"
+    @close="viewerVisible = false"
+  />
 </template>
 
 <script setup lang="ts">
 import { ref, watch } from 'vue'
 import { api, imgFallback, imgProxy, localImg } from '../api'
 import type { FileRecord, MovieDetail } from '../api/types'
+import ImagePreviewViewer from './ImagePreviewViewer.vue'
 import {
   formatFileSize,
   movieStatusLabels,
@@ -152,10 +170,29 @@ import {
 } from '../utils'
 
 const props = defineProps<{ modelValue: boolean; number: string }>()
-const emit = defineEmits<{ 'update:modelValue': [boolean] }>()
+const emit = defineEmits<{
+  'update:modelValue': [boolean]
+  /** 快捷刮削/重新刮削：打开刮削弹窗并进入该影片的多源对比 */
+  scrape: []
+  /** 快捷手动落库：打开手动录入弹窗 */
+  manual: []
+  /** 快捷整理：打开整理弹窗并预选该影片的文件记录 */
+  organize: []
+}>()
 
 const detail = ref<MovieDetail | null>(null)
 const error = ref('')
+
+// 大图预览
+const viewerVisible = ref(false)
+const viewerUrls = ref<string[]>([])
+const viewerIndex = ref(0)
+
+function openViewer(urls: string[], index: number) {
+  viewerUrls.value = urls
+  viewerIndex.value = index
+  viewerVisible.value = true
+}
 
 watch(
   () => [props.modelValue, props.number] as const,
@@ -200,6 +237,9 @@ async function load(number: string) {
   object-fit: cover;
   display: block;
 }
+.zoomable {
+  cursor: zoom-in;
+}
 .cover-placeholder {
   width: 100%;
   height: 100%;
@@ -226,6 +266,11 @@ async function load(number: string) {
   font-weight: 700;
   color: var(--el-color-primary);
   letter-spacing: 0.5px;
+}
+.hero-actions {
+  margin-left: auto;
+  display: flex;
+  gap: 6px;
 }
 .title {
   margin: 0;
@@ -320,7 +365,8 @@ async function load(number: string) {
 }
 .preview-img {
   width: 100%;
-  aspect-ratio: 16 / 9;
+  height: auto;
+  display: block;
   border-radius: var(--glass-radius-sm);
   cursor: pointer;
   box-shadow: var(--glass-shadow);

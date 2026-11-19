@@ -161,13 +161,15 @@ export interface OrganizeItemRequest {
   recordId: number
   /** 完整目标路径（目录+文件名）；省略时按命名模板渲染 */
   targetPath?: string
-  /** 整理方式覆盖；省略时使用请求级 mode / 全局配置 */
+  /** 整理方式覆盖；省略时使用请求级 mode */
   mode?: LinkMode
 }
 
 export interface OrganizeRequest {
-  targetDir?: string
-  mode?: LinkMode
+  /** 目标目录：必填（整理不再使用全局配置） */
+  targetDir: string
+  /** 整理方式：必填（整理不再使用全局配置） */
+  mode: LinkMode
   namingTemplate?: string
   conflictPolicy?: ConflictPolicy
   generateNfo?: boolean
@@ -194,8 +196,10 @@ export interface OrganizeRecordItem {
 
 export interface OrganizePreviewRequest {
   recordIds: number[]
-  targetDir?: string
-  mode?: LinkMode
+  /** 目标目录：必填（整理不再使用全局配置） */
+  targetDir: string
+  /** 整理方式：必填（整理不再使用全局配置） */
+  mode: LinkMode
   namingTemplate?: string
   conflictPolicy?: ConflictPolicy
 }
@@ -226,6 +230,32 @@ export interface PipelineRequest {
   organize?: OrganizeRequest
 }
 
+// ---------- 多源对比刮削 ----------
+
+/** 单字段来源选择：source=null 留空；'manual' 手动输入（value 为用户输入）；其余为数据源 id */
+export interface ScrapeFieldChoice {
+  source?: string | null
+  value?: string | null
+}
+
+export interface ScrapePreviewResponse {
+  number: string
+  /** 有结果的来源 id（按 source-order 排序） */
+  sources: string[]
+  /** 字段键 → 来源 id → 原文值（仅含该来源有值的字段） */
+  fields: Record<string, Record<string, string>>
+  /** 字段键 → 合并规则的默认来源 id（该字段所有来源均无值时为 null） */
+  defaults: Record<string, string | null>
+}
+
+export interface ScrapeApplyRequest {
+  /** 落库番号（对比界面可编辑修正识别错误） */
+  number: string
+  /** 原记录番号；与 number 不同时把该记录改用 number 落库（movies/file_records 同步改番号） */
+  recordNumber?: string
+  fields: Record<string, ScrapeFieldChoice>
+}
+
 export type SettingsUpdate = {
   sourceOrder?: string
   userAgent?: string
@@ -242,8 +272,6 @@ export type SettingsUpdate = {
   timeoutMs?: number
   /** CF 过盾请求超时 (ms)：需等待 CF 挑战，通常更长 */
   cfTimeoutMs?: number
-  targetDir?: string
-  mode?: LinkMode
   namingTemplate?: string
   conflictPolicy?: ConflictPolicy
   generateNfo?: boolean
@@ -257,6 +285,8 @@ export type SettingsUpdate = {
   embyApiKey?: string
   embyProxyHost?: string
   embyProxyPort?: number
+  /** 图片缓存过期天数（0 = 永久保留） */
+  imagesTtlDays?: number
   /** 只读：扫描全局配置（GET 返回，PUT 忽略），供扫描弹窗高级选项回填 */
   videoExtensions?: string
   minFileSizeMb?: number
@@ -327,4 +357,16 @@ export interface EmbyRescrapePreview {
   current: EmbyItemDetail
   /** 刮削得到的元数据（待确认应用） */
   proposed: EmbyMetadataUpdate
+  /** 多源对比：字段键 → 来源 id → 原文值（仅含该源有值的字段） */
+  fields: Record<string, Record<string, string>>
+  /** 多源对比：字段键 → 合并规则的默认来源 id（该字段所有来源均无值时为 null） */
+  defaults: Record<string, string | null>
+  /** 多源对比：有结果的来源 id 列表（按 source-order 排序） */
+  sources: string[]
+}
+
+/** 多源对比重新刮削应用请求 */
+export interface EmbyRescrapeApplyRequest {
+  number: string
+  fields: Record<string, ScrapeFieldChoice>
 }

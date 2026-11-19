@@ -1,0 +1,11 @@
+.git
+.idea
+*.iml
+.gradle
+build/
+data/
+docs/
+todo.md
+README.md
+sinjav_web/node_modules/
+sinjav_web/dist/

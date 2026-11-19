@@ -13,6 +13,7 @@ import top.sincs.sinjav.api.dto.EmbyItemDetailDto
 import top.sincs.sinjav.api.dto.EmbyPageDto
 import top.sincs.sinjav.api.dto.EmbyLibraryDto
 import top.sincs.sinjav.api.dto.EmbyMetadataUpdate
+import top.sincs.sinjav.api.dto.EmbyRescrapeApplyRequest
 import top.sincs.sinjav.api.dto.EmbyRescrapePreviewDto
 import top.sincs.sinjav.api.dto.EmbyRescrapePreviewRequest
 import top.sincs.sinjav.emby.EmbyClient
@@ -58,12 +59,19 @@ class EmbyController(private val emby: EmbyClient, private val rescrape: EmbyRes
     fun updateMetadata(@PathVariable id: String, @RequestBody req: EmbyMetadataUpdate): EmbyItemDetailDto =
         emby.updateMetadata(id, req)
 
-    /** 重新刮削预览：识别番号（可手动指定）→ 本应用刮削 → 返回刮削前后元数据对比（不推送，同步执行） */
+    /** 重新刮削预览：识别番号（可手动指定）→ 并发抓全源 → 返回各源原始值、合并默认值与前后对比（不推送，同步执行） */
     @PostMapping("/emby/items/{id}/rescrape/preview")
     fun rescrapePreview(
         @PathVariable id: String,
         @RequestBody(required = false) req: EmbyRescrapePreviewRequest?,
     ): EmbyRescrapePreviewDto = rescrape.preview(id, req?.number?.trim()?.ifBlank { null })
+
+    /** 重新刮削应用：按逐字段来源选择（各源/留空/manual 手动输入）组装元数据并回写 Emby（同步） */
+    @PostMapping("/emby/items/{id}/rescrape/apply")
+    fun rescrapeApply(
+        @PathVariable id: String,
+        @RequestBody req: EmbyRescrapeApplyRequest,
+    ): EmbyMetadataUpdate = rescrape.apply(id, req)
 
     /** 封面代理：Emby 主图经后端转发，不暴露 API Key；无图时 404 */
     @GetMapping("/emby/items/{id}/images/primary")

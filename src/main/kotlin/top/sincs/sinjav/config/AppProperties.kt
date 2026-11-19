@@ -32,9 +32,9 @@ data class ScraperProps(
 )
 
 data class OrganizeProps(
-    var targetDir: String = "",
-    var mode: String = "hardlink",
-    var namingTemplate: String = "{number}/{number} - {title}",
+    // 目标目录与整理方式不再走全局配置：每次整理请求必须显式指定
+    // 默认子目录与文件基名均为番号（转移后的文件名 = 番号.原扩展名）
+    var namingTemplate: String = "{number}/{number}",
     var conflictPolicy: String = "skip",
     var generateNfo: Boolean = true,
     var downloadImages: Boolean = true,
@@ -61,6 +61,8 @@ data class AsyncProps(
 data class ImageProps(
     var download: Boolean = true,
     var dir: String = "./data/images",
+    /** 图片缓存过期天数：过期文件定时清理（每日 04:00）；0 = 永久保留 */
+    var ttlDays: Int = 3,
 )
 
 @ConfigurationProperties(prefix = "sinjav")

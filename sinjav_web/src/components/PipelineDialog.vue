@@ -28,7 +28,7 @@
           <DirTreeInput v-model="targetDir" />
         </el-form-item>
         <el-form-item label="整理方式">
-          <el-select v-model="mode" clearable placeholder="留空使用全局配置" style="width: 100%">
+          <el-select v-model="mode" placeholder="请选择整理方式" style="width: 100%">
             <el-option label="硬链接" value="hardlink" />
             <el-option label="软链接" value="symlink" />
             <el-option label="移动" value="move" />
@@ -71,13 +71,24 @@ async function submit() {
     ElMessage.warning('请输入至少一个源目录')
     return
   }
+  // 整理段的目标目录与整理方式必填（不再有全局配置兜底）
+  if (doOrganize.value) {
+    if (!targetDir.value.trim()) {
+      ElMessage.warning('请选择整理目标目录')
+      return
+    }
+    if (!mode.value) {
+      ElMessage.warning('请选择整理方式')
+      return
+    }
+  }
   submitting.value = true
   try {
     const job = await api.triggerPipeline({
       scan: { sourceDirs: dirs, recursive: recursive.value },
       scrape: doScrape.value ? {} : undefined,
       organize: doOrganize.value
-        ? { targetDir: targetDir.value.trim() || undefined, mode: mode.value || undefined }
+        ? { targetDir: targetDir.value.trim(), mode: mode.value as LinkMode }
         : undefined,
     })
     ElMessage.success(`流水线任务 #${job.jobId} 已创建`)

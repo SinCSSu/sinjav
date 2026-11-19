@@ -100,30 +100,50 @@
           <el-button type="primary" :loading="refreshing" @click="rescrape">重新刮削</el-button>
         </div>
 
-        <!-- 刮削结果对比（确认后才回写 Emby） -->
+        <!-- 重新刮削：多源对比逐字段选择来源（确认后回写 Emby） -->
         <div v-if="preview && !editing" class="diff-panel">
           <div class="diff-header">
             <span>
-              识别番号 <b class="mono">{{ preview.matchedNumber }}</b>
-              （来源 {{ preview.source }}）
+              番号
+              <el-input
+                v-model="numberInput"
+                size="small"
+                class="num-input mono"
+                placeholder="番号"
+                @keyup.enter="rescrapeByNumber"
+              />
+              <el-button size="small" :loading="refreshing" @click="rescrapeByNumber">重新刮削</el-button>
+              <span class="cmp-hint">番号识别错了可修改后重新刮削；逐字段选择来源；「留空」= 不回写该字段，「手动输入」= 自定义值（不翻译）；应用时标题/简介自动译为中文</span>
             </span>
             <el-button size="small" text @click="preview = null">关闭</el-button>
           </div>
-          <div v-for="row in diffRows" :key="row.key" class="diff-row">
-            <el-checkbox v-model="row.checked" :disabled="!row.changed" class="diff-check" />
-            <span class="diff-label">{{ row.label }}</span>
-            <div class="diff-values">
-              <div class="diff-old">{{ row.current }}</div>
-              <div v-if="row.changed" class="diff-arrow">→</div>
-              <div v-if="row.changed" class="diff-new">{{ row.proposed }}</div>
-              <div v-else class="diff-same">（无变化）</div>
+          <div class="cmp-fields">
+            <div v-for="f in EMBY_FIELDS" :key="f.key" class="cmp-row">
+              <span class="k">{{ f.label }}</span>
+              <el-select v-model="sel[f.key]" size="small" class="cmp-select" @change="syncAllEmpty">
+                <el-option v-for="s in fieldSources(f.key)" :key="s" :label="s" :value="s" />
+                <el-option label="留空" value="" />
+                <el-option label="手动输入" :value="MANUAL" />
+              </el-select>
+              <el-input
+                v-if="sel[f.key] === MANUAL"
+                v-model="manual[f.key]"
+                size="small"
+                :type="f.multiline ? 'textarea' : 'text'"
+                :rows="f.key === 'plot' ? 4 : 2"
+                :placeholder="f.key === 'actresses' ? '多个用逗号分隔' : '输入自定义值'"
+                class="cmp-value cmp-manual"
+                @change="syncAllEmpty"
+              />
+              <div v-else class="cmp-value" :class="{ multiline: f.multiline }">
+                {{ fieldDisplay(f.key, sel[f.key]) ?? '—' }}
+              </div>
             </div>
           </div>
-          <div v-if="!hasChanges" class="diff-none">刮削结果与当前元数据一致，无需应用</div>
           <div class="diff-actions">
             <el-button @click="preview = null">取消</el-button>
-            <el-button type="primary" :loading="applying" :disabled="!hasChanges" @click="applyPreview">
-              应用勾选字段到 Emby
+            <el-button type="primary" :loading="applying" :disabled="allEmpty" @click="applyPreview">
+              应用到 Emby
             </el-button>
           </div>
         </div>
@@ -141,6 +161,20 @@ import type { EmbyItemDetail, EmbyMetadataUpdate, EmbyRescrapePreview } from '..
 const props = defineProps<{ modelValue: boolean; itemId: string }>()
 const emit = defineEmits<{ 'update:modelValue': [boolean] }>()
 
+const MANUAL = '__manual__'
+/** 重新刮削可选来源的字段（与后端多源对比同一套字段键，图片字段不回写 Emby 元数据故不含） */
+const EMBY_FIELDS = [
+  { key: 'title', label: '标题', multiline: false },
+  { key: 'plot', label: '简介', multiline: true },
+  { key: 'releaseDate', label: '发行日期', multiline: false },
+  { key: 'director', label: '导演', multiline: false },
+  { key: 'maker', label: '厂商', multiline: false },
+  { key: 'label', label: '发行商', multiline: false },
+  { key: 'series', label: '系列', multiline: false },
+  { key: 'actresses', label: '女优', multiline: false },
+  { key: 'genres', label: '类别', multiline: false },
+] as const
+
 const detail = ref<EmbyItemDetail | null>(null)
 const error = ref('')
 const editing = ref(false)
@@ -148,19 +182,20 @@ const saving = ref(false)
 const refreshing = ref(false)
 const applying = ref(false)
 
-/** 刮削预览结果与差异行 */
+/** 刮削预览结果 */
 const preview = ref<EmbyRescrapePreview | null>(null)
 
-interface DiffRow {
-  key: keyof EmbyMetadataUpdate
-  label: string
-  current: string
-  proposed: string
-  changed: boolean
-  checked: boolean
+// 逐字段来源选择：key → 来源 id / ''(留空=不回写) / MANUAL(手动输入)
+const sel = ref<Record<string, string>>({})
+const manual = ref<Record<string, string>>({})
+/** 对比面板内可编辑的番号（识别错了可改后重新刮削） */
+const numberInput = ref('')
+
+const allEmpty = ref(false)
+
+function syncAllEmpty() {
+  allEmpty.value = EMBY_FIELDS.every(f => (sel.value[f.key] ?? '') === '')
 }
-const diffRows = ref<DiffRow[]>([])
-const hasChanges = ref(false)
 
 const form = reactive<EmbyMetadataUpdate>({})
 const genresText = ref('')
@@ -176,7 +211,8 @@ watch(
       error.value = ''
       editing.value = false
       preview.value = null
-      diffRows.value = []
+      sel.value = {}
+      manual.value = {}
     }
   },
 )
@@ -241,11 +277,12 @@ async function save() {
   }
 }
 
-/** 重新刮削：刮削并展示前后差异，不直接推送 */
+/** 重新刮削：并发抓全源并展示逐字段来源选择，确认后回写 Emby */
 async function rescrape() {
   refreshing.value = true
   preview.value = null
-  diffRows.value = []
+  sel.value = {}
+  manual.value = {}
   try {
     await doPreview()
   } catch (e) {
@@ -263,8 +300,22 @@ async function rescrape() {
 async function doPreview(manualNumber?: string) {
   const result = await api.previewEmbyRescrape(props.itemId, manualNumber)
   preview.value = result
-  buildDiffRows(result)
-  if (!hasChanges.value) ElMessage.info('刮削结果与当前元数据一致')
+  numberInput.value = result.matchedNumber
+  buildSel(result)
+}
+
+/** 对比面板内编辑番号后重新刮削 */
+async function rescrapeByNumber() {
+  const n = numberInput.value.trim()
+  if (!n) return
+  refreshing.value = true
+  try {
+    await doPreview(n)
+  } catch (e) {
+    ElMessage.error(e instanceof Error ? e.message : String(e))
+  } finally {
+    refreshing.value = false
+  }
 }
 
 /** 自动识别失败时，弹出对话框手动输入番号重试 */
@@ -293,52 +344,55 @@ async function promptManualNumber() {
   }
 }
 
-function fmtList(v?: string[] | null): string {
-  return (v ?? []).join('、')
+/** 打开对比面板：默认按合并规则选来源（source-order 靠前的源优先）；无值字段留空 */
+function buildSel(result: EmbyRescrapePreview) {
+  sel.value = Object.fromEntries(EMBY_FIELDS.map(f => [f.key, result.defaults[f.key] ?? '']))
+  manual.value = Object.fromEntries(EMBY_FIELDS.map(f => [f.key, '']))
+  syncAllEmpty()
 }
 
-function buildDiffRows(result: EmbyRescrapePreview) {
-  const cur = result.current
-  const prop = result.proposed
-  const empty = '（空）'
-  const mk = (key: keyof EmbyMetadataUpdate, label: string, current: string, proposed: string): DiffRow => {
-    const changed = current !== proposed
-    return { key, label, current: current || empty, proposed: proposed || empty, changed, checked: changed }
-  }
-  diffRows.value = [
-    mk('name', '标题', cur.name ?? '', prop.name ?? ''),
-    mk('originalTitle', '原标题', cur.originalTitle ?? '', prop.originalTitle ?? ''),
-    mk('overview', '简介', cur.overview ?? '', prop.overview ?? ''),
-    mk('genres', '类别', fmtList(cur.genres), fmtList(prop.genres)),
-    mk('studios', '工作室', fmtList(cur.studios), fmtList(prop.studios)),
-    mk('tags', '标签', fmtList(cur.tags), fmtList(prop.tags)),
-    mk('premiereDate', '发行日期', cur.premiereDate?.slice(0, 10) ?? '', prop.premiereDate ?? ''),
-    mk('productionYear', '年份', cur.productionYear?.toString() ?? '', prop.productionYear?.toString() ?? ''),
-  ]
-  hasChanges.value = diffRows.value.some((r) => r.changed)
+/** 某字段有值的来源列表（下拉选项） */
+function fieldSources(key: string): string[] {
+  const values = preview.value?.fields[key]
+  if (!preview.value || !values) return []
+  return (preview.value.sources ?? []).filter(s => values[s] != null)
 }
 
-/** 把勾选的字段回写到 Emby */
+function fieldValue(key: string, source: string | undefined): string | null {
+  if (!preview.value || !source || source === MANUAL) return null
+  return preview.value.fields[key]?.[source] ?? null
+}
+
+/** 女优等列表字段原文显示为「/」分隔 */
+function fieldDisplay(key: string, source: string | undefined): string | null {
+  const v = fieldValue(key, source)
+  if (v == null) return null
+  if (key === 'actresses') return v.split(/[,，、/\n]/).map(s => s.trim()).filter(Boolean).join(' / ')
+  return v
+}
+
+/** 把逐字段选择回写到 Emby（留空字段不回写；标题/简介由后端翻译） */
 async function applyPreview() {
-  const prop = preview.value?.proposed
-  if (!prop) return
-  const payload: EmbyMetadataUpdate = {}
-  for (const row of diffRows.value) {
-    if (!row.checked || !row.changed) continue
-    if (row.key === 'name') payload.name = prop.name
-    else if (row.key === 'originalTitle') payload.originalTitle = prop.originalTitle
-    else if (row.key === 'overview') payload.overview = prop.overview
-    else if (row.key === 'genres') payload.genres = prop.genres
-    else if (row.key === 'studios') payload.studios = prop.studios
-    else if (row.key === 'tags') payload.tags = prop.tags
-    else if (row.key === 'premiereDate') payload.premiereDate = prop.premiereDate
-    else if (row.key === 'productionYear') payload.productionYear = prop.productionYear
+  const p = preview.value
+  if (!p) return
+  const fields: Record<string, { source: string | null; value?: string | null }> = {}
+  for (const f of EMBY_FIELDS) {
+    const s = sel.value[f.key] ?? ''
+    if (s === '') {
+      fields[f.key] = { source: null }
+    } else if (s === MANUAL) {
+      fields[f.key] = { source: 'manual', value: manual.value[f.key] }
+    } else {
+      fields[f.key] = { source: s, value: fieldValue(f.key, s) }
+    }
   }
   applying.value = true
   try {
-    detail.value = await api.updateEmbyMetadata(props.itemId, payload)
+    await api.applyEmbyRescrape(props.itemId, { number: p.matchedNumber, fields })
+    detail.value = await api.getEmbyItem(props.itemId)
     preview.value = null
-    diffRows.value = []
+    sel.value = {}
+    manual.value = {}
     ElMessage.success('已回写 Emby')
   } catch (e) {
     ElMessage.error(e instanceof Error ? e.message : String(e))
@@ -501,7 +555,7 @@ async function applyPreview() {
   justify-content: flex-end;
 }
 
-/* ---------- 刮削差异面板 ---------- */
+/* ---------- 重新刮削：多源对比面板 ---------- */
 .diff-panel {
   margin-top: 20px;
   padding: 12px 14px;
@@ -511,70 +565,61 @@ async function applyPreview() {
 }
 .diff-header {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
   font-size: 13px;
   margin-bottom: 10px;
 }
-.diff-row {
-  display: flex;
-  align-items: flex-start;
-  gap: 10px;
-  padding: 6px 0;
-  border-top: 1px solid var(--glass-border-soft);
-}
-.diff-check {
+.cmp-hint {
+  display: block;
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
   margin-top: 2px;
 }
-.diff-label {
-  width: 60px;
-  flex-shrink: 0;
-  font-size: 13px;
-  color: var(--el-text-color-secondary);
-  line-height: 22px;
+.num-input {
+  width: 170px;
+  margin: 0 6px;
+  font-family: Consolas, monospace;
 }
-.diff-values {
-  flex: 1;
-  min-width: 0;
+.diff-header .el-button + .el-button {
+  margin-left: 0;
+}
+.cmp-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.cmp-row {
   display: flex;
   align-items: flex-start;
   gap: 8px;
-  font-size: 13px;
-  line-height: 1.6;
 }
-.diff-old,
-.diff-new,
-.diff-same {
-  white-space: pre-line;
-  word-break: break-all;
-  max-height: 96px;
-  overflow: auto;
-  padding: 2px 6px;
-  border-radius: 4px;
-}
-.diff-old {
-  flex: 1;
-  color: var(--el-text-color-secondary);
-  text-decoration: line-through;
-  text-decoration-color: var(--el-text-color-placeholder);
-}
-.diff-arrow {
-  color: var(--el-text-color-placeholder);
+.cmp-row .k {
+  width: 56px;
   flex-shrink: 0;
-}
-.diff-new {
-  flex: 1.2;
-  color: var(--el-color-primary);
-  background: var(--glass-accent);
-}
-.diff-same {
-  color: var(--el-text-color-placeholder);
-}
-.diff-none {
-  margin-top: 10px;
   font-size: 12px;
   color: var(--el-text-color-secondary);
-  text-align: center;
+  padding-top: 6px;
+}
+.cmp-select {
+  width: 110px;
+  flex-shrink: 0;
+}
+.cmp-value {
+  flex: 1;
+  min-width: 0;
+  font-size: 13px;
+  line-height: 1.6;
+  word-break: break-all;
+  padding-top: 5px;
+  white-space: pre-line;
+}
+.cmp-value.multiline {
+  max-height: 110px;
+  overflow: auto;
+}
+.cmp-manual {
+  padding-top: 0;
 }
 .diff-actions {
   margin-top: 12px;

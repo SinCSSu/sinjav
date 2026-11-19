@@ -75,12 +75,12 @@ class Organizer(
             ?: return OrganizePreviewItem(
                 recordId = recordId, sourcePath = "", fileName = "", number = null,
                 title = null, coverUrl = null, targetPath = null,
-                mode = params.mode ?: props.organize.mode,
+                mode = params.mode,
                 conflictPolicy = params.conflictPolicy ?: props.organize.conflictPolicy,
                 error = "文件记录不存在: $recordId",
             )
         val movie = record.number?.let { movies.findByNumber(it) }
-        val mode = params.mode ?: props.organize.mode
+        val mode = requiredMode(params)
         val reorganize = record.organizeStatus == "organized"
         val item = OrganizePreviewItem(
             recordId = recordId,
@@ -119,12 +119,12 @@ class Organizer(
             ?: return OrganizeResult(false, message = "番号 $number 无元数据（未刮削）")
         if (movie.status != "scraped") return OrganizeResult(false, message = "番号 $number 未成功刮削")
 
-        val mode = overrideMode ?: params.mode ?: props.organize.mode
+        val mode = overrideMode ?: requiredMode(params)
         val strategy = strategyOf(mode)
         val conflict = ConflictPolicy.valueOf(
             (params.conflictPolicy ?: props.organize.conflictPolicy).uppercase(),
         )
-        val targetRoot = Path.of(params.targetDir?.takeIf { it.isNotBlank() } ?: props.organize.targetDir)
+        val targetRoot = requiredTargetDir(params)
 
         val source = Path.of(record.sourcePath)
         if (mode != "move" && !Files.exists(source)) {
@@ -170,7 +170,7 @@ class Organizer(
             ?: return OrganizeResult(false, message = "文件记录不存在: ${item.recordId}")
         var rec = record
         if (rec.organizeStatus == "organized") {
-            val effectiveMode = item.mode ?: params.mode ?: props.organize.mode
+            val effectiveMode = item.mode ?: requiredMode(params)
             when (rec.linkMode) {
                 "move" -> {
                     if (effectiveMode in LINK_MODES) {
@@ -209,7 +209,7 @@ class Organizer(
             }
         }
         val template = params.namingTemplate ?: props.organize.namingTemplate
-        val targetRoot = Path.of(params.targetDir?.takeIf { it.isNotBlank() } ?: props.organize.targetDir)
+        val targetRoot = requiredTargetDir(params)
         // 模板渲染结果：除最后一段外为子目录，最后一段为目标文件基名（扩展名沿用源文件）
         val rendered = naming.render(template, movie, movies.findActresses(movie.id))
         val parts = rendered.split('/').filter { it.isNotBlank() }
@@ -259,6 +259,16 @@ class Organizer(
                 .onFailure { log.warn("下载剧照失败 {}: {}", url, it.message) }
         }
     }
+
+    /** 整理方式必填（不再回退全局配置） */
+    private fun requiredMode(params: OrganizeParams): String =
+        params.mode?.takeIf { it.isNotBlank() }
+            ?: throw IllegalArgumentException("整理方式（mode）必填，请每次整理时指定")
+
+    /** 目标目录必填（不再回退全局配置） */
+    private fun requiredTargetDir(params: OrganizeParams): Path =
+        params.targetDir?.takeIf { it.isNotBlank() }?.let { Path.of(it.trim()) }
+            ?: throw IllegalArgumentException("目标目录（targetDir）必填，请每次整理时指定")
 
     private fun strategyOf(mode: String): LinkStrategy = when (mode.lowercase()) {
         "hardlink" -> HardLinkStrategy()

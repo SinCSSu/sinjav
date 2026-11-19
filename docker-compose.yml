@@ -1,0 +1,85 @@
+# sinJav + trawl（CF 过盾代理）+ Redis 联合部署
+# 启动：docker compose up -d --build
+# 说明：三个容器同网络（compose 默认网络，服务名互访 trawl/redis）；
+#       sinjav 在 trawl 健康检查通过后启动；trawl 的 CA 证书卷同时只读挂载给 sinjav。
+services:
+  sinjav:
+    build: .
+    image: sinjav:latest
+    container_name: sinjav
+    restart: unless-stopped
+    ports:
+      - "8656:8656"          # Web 界面与 API：http://localhost:8656/
+    environment:
+      TZ: Asia/Shanghai
+      # ---- CF 过盾接入 trawl（服务名互访，无需 IP） ----
+      SINJAV_SCRAPER_CF_PROXY_URL: http://trawl:8192
+      # 需要 CF 过盾的数据源 id（逗号分隔），可用环境变量 SINJAV_CF_PROXY_SOURCES 覆盖
+      SINJAV_SCRAPER_CF_PROXY_SOURCES: ${SINJAV_CF_PROXY_SOURCES:-javdb}
+      # ---- trawl CA 证书（共享数据卷）----
+      # 覆盖 application.yaml 的 classpath:ca.crt；文件名以 trawl 实际生成的 CA 为准
+      # （首次启动后可用 docker exec trawl ls /data 确认，再改这里的路径）
+      SINJAV_SCRAPER_CF_CA_CERT_PATH: /ca/trawl_ca.pem
+      # 默认内置 SQLite（./data/sinjav.db），以下仅在切换 PostgreSQL 时取消注释：
+      # SINJAV_DB_URL: jdbc:postgresql://postgres:5432/sinjav
+      # SINJAV_DB_USER: sinjav
+      # SINJAV_DB_PASSWORD: changeit
+    volumes:
+      - ./data:/app/data       # SQLite 数据库 + 刮削图片缓存
+      - trawl_ca:/ca:ro        # 与 trawl 共享的 CA 数据卷（只读）
+      # 视频目录挂载：扫描/整理时按容器内路径填写（如 /media/movies）
+      - ${SINJAV_MEDIA_DIR:-./media}:/media
+    depends_on:
+      trawl:
+        condition: service_healthy   # trawl 健康检查通过后再启动
+    networks:
+      - default
+
+  trawl:
+    image: registry.cn-hongkong.aliyuncs.com/sincs_stf/trawl:latest
+    container_name: trawl
+    restart: unless-stopped
+    environment:
+      - TZ=Asia/Shanghai
+      - LOG_LEVEL=info
+      - SESSION_CACHE_DRIVER=redis
+      - REDIS_URL=redis://redis:6379
+      - MITM_ENABLED=true
+    shm_size: 1gb
+    # MITM 代理仅供 sinjav 走容器网络访问（http://trawl:8192）；如需宿主机调试再放开
+    # ports:
+    #   - 8192:8192
+    volumes:
+      - trawl_ca:/data         # CA 证书数据卷：trawl 生成/写入，同时挂载给 sinjav
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - default
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8191/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  redis:
+    image: redis:8-alpine
+    container_name: trawl-redis
+    restart: unless-stopped
+    volumes:
+      - trawl_redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - default # 仅内部供 trawl 访问，无需加入外部网络
+
+volumes:
+  trawl_redis_data:
+  trawl_ca:                    # trawl CA 证书卷：trawl 写入，sinjav 只读
+
+networks:
+  default:

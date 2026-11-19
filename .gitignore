@@ -41,3 +41,4 @@ out/
 /.codebuddy/
 /data/
 /javtest/
+/src/main/resources/ca.crt
