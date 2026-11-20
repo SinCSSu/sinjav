@@ -27,6 +27,12 @@ class GlobalExceptionHandler {
     fun handleNotFound(e: NoSuchElementException): ProblemDetail =
         ProblemDetail.forStatusAndDetail(HttpStatus.NOT_FOUND, e.message ?: "资源不存在").apply { title = "Not found" }
 
+    @ExceptionHandler(top.sincs.sinjav.common.AuthException::class)
+    fun handleAuth(e: top.sincs.sinjav.common.AuthException): ProblemDetail =
+        ProblemDetail.forStatusAndDetail(HttpStatus.valueOf(e.status), e.message ?: "认证失败").apply {
+            title = if (e.status == 401) "Unauthorized" else "Auth error"
+        }
+
     @ExceptionHandler(top.sincs.sinjav.job.JobConflictException::class)
     fun handleConflict(e: top.sincs.sinjav.job.JobConflictException): ProblemDetail =
         ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT, e.message ?: "任务冲突").apply { title = "Job conflict" }
