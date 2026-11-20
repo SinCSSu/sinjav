@@ -127,7 +127,11 @@ class HttpClientFactory(private val props: AppProperties) {
             }
             val tmf = TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm())
             tmf.init(ks)
-            SSLContext.getInstance("TLS").apply { init(null, tmf.trustManagers, null) }
+            // 包装信任管理器：TLS 握手时把 Java 实际收到的证书链打进日志（诊断 MITM CA 对账）
+            val tms = tmf.trustManagers.map { tm ->
+                if (tm is javax.net.ssl.X509ExtendedTrustManager) LoggingTrustManager(tm, log) else tm
+            }.toTypedArray()
+            SSLContext.getInstance("TLS").apply { init(null, tms, null) }
         }.onFailure {
             log.warn("加载 CF 过盾 CA 证书失败({})，使用默认信任库: {}", it.message, path)
         }.getOrNull()
@@ -147,6 +151,54 @@ class HttpClientFactory(private val props: AppProperties) {
 
     private val lock = ReentrantReadWriteLock()
     private var lastRequestAt = 0L
+
+    /** TLS 握手时把实际收到的证书链（subject/issuer/指纹）打进日志后委托原信任管理器 */
+    private class LoggingTrustManager(
+        private val delegate: javax.net.ssl.X509ExtendedTrustManager,
+        private val log: org.slf4j.Logger,
+    ) : javax.net.ssl.X509ExtendedTrustManager() {
+
+        private fun dump(chain: Array<java.security.cert.X509Certificate>?, where: String) {
+            if (chain == null || chain.isEmpty()) {
+                log.warn("TLS({}) 收到空证书链", where)
+                return
+            }
+            chain.forEachIndexed { i, c ->
+                val fp = java.security.MessageDigest.getInstance("SHA-256").digest(c.encoded)
+                log.info(
+                    "TLS({}) 收到证书[{}]: subject={} issuer={} fp={}",
+                    where, i, c.subjectX500Principal.name, c.issuerX500Principal.name,
+                    java.util.HexFormat.of().formatHex(fp),
+                )
+            }
+        }
+
+        override fun checkClientTrusted(chain: Array<java.security.cert.X509Certificate>, authType: String) =
+            delegate.checkClientTrusted(chain, authType)
+
+        override fun checkServerTrusted(chain: Array<java.security.cert.X509Certificate>, authType: String) {
+            dump(chain, "server")
+            delegate.checkServerTrusted(chain, authType)
+        }
+
+        override fun checkClientTrusted(chain: Array<java.security.cert.X509Certificate>, authType: String, socket: java.net.Socket?) =
+            delegate.checkClientTrusted(chain, authType, socket)
+
+        override fun checkServerTrusted(chain: Array<java.security.cert.X509Certificate>, authType: String, socket: java.net.Socket?) {
+            dump(chain, "server-socket")
+            delegate.checkServerTrusted(chain, authType, socket)
+        }
+
+        override fun checkClientTrusted(chain: Array<java.security.cert.X509Certificate>, authType: String, engine: javax.net.ssl.SSLEngine?) =
+            delegate.checkClientTrusted(chain, authType, engine)
+
+        override fun checkServerTrusted(chain: Array<java.security.cert.X509Certificate>, authType: String, engine: javax.net.ssl.SSLEngine?) {
+            dump(chain, "server-engine")
+            delegate.checkServerTrusted(chain, authType, engine)
+        }
+
+        override fun getAcceptedIssuers(): Array<java.security.cert.X509Certificate> = delegate.acceptedIssuers
+    }
 
     fun get(url: String, referer: String? = null, cookie: String? = null, source: String? = null): String {
         throttle()
