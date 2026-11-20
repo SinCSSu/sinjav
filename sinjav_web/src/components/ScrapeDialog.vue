@@ -670,9 +670,14 @@ function statusTagType(s: MovieStatus): 'warning' | 'danger' | 'success' {
   flex: 1;
   min-height: 0;
 }
+/* el-scrollbar 的滚动条悬浮在内容之上，右侧留出空间避免输入框压到滚动条 */
+.cmp-body {
+  padding-right: 12px;
+}
 .cmp-main {
   display: flex;
   gap: 14px;
+  min-width: 0;
 }
 .cmp-fields {
   flex: 1;
@@ -712,6 +717,10 @@ function statusTagType(s: MovieStatus): 'warning' | 'danger' | 'success' {
 }
 .cmp-manual {
   padding-top: 0;
+}
+/* 简介 textarea：禁用横向拖拽，避免拖宽后压到滚动条 */
+.cmp-row :deep(.el-textarea__inner) {
+  resize: none;
 }
 .cmp-thumbs {
   margin-top: 12px;

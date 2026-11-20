@@ -633,6 +633,9 @@ async function applyPreview() {
 .cmp-manual {
   padding-top: 0;
 }
+.cmp-fields :deep(.el-textarea__inner) {
+  resize: none;
+}
 .diff-actions {
   margin-top: 12px;
   display: flex;
