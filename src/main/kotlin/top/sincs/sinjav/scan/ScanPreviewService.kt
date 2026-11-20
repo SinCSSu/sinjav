@@ -23,7 +23,8 @@ data class ScanPreviewResponse(
 
 /**
  * 预览扫描：同步遍历目录返回候选文件列表（不写数据库）。
- * extensions/minFileSizeMb 未指定（null 或 0）时回退到全局配置，与正式扫描同一规则。
+ * extensions/minFileSizeMb/filenamePattern 未指定（null 或 0）时回退到全局配置，与正式扫描同一规则。
+ * 仅返回能识别出番号的文件；filenamePattern 正则在其之上再做一层收紧过滤。
  */
 @Service
 class ScanPreviewService(
@@ -40,7 +41,8 @@ class ScanPreviewService(
         minFileSizeMb: Long?,
         filenamePattern: String?,
     ): ScanPreviewResponse {
-        val regex = filenamePattern?.let { runCatching { Regex(it) }.getOrElse { e ->
+        val pattern = filenamePattern ?: props.scan.filenamePattern.trim().takeIf { it.isNotEmpty() }
+        val regex = pattern?.let { runCatching { Regex(it) }.getOrElse { e ->
             throw IllegalArgumentException("文件名正则非法: ${e.message}")
         } }
         val effectiveMinMb = minFileSizeMb?.takeIf { it > 0 } ?: props.scan.minFileSizeMb
@@ -49,16 +51,19 @@ class ScanPreviewService(
             extensions ?: emptySet(),
             effectiveMinMb,
         )
-        val filtered = if (regex != null) files.filter { regex.containsMatchIn(it.fileName) } else files
-        val items = filtered.take(cap).map { f ->
-            val number = recognizer.recognize(f.fileName)?.normalized
+        val filtered = files.mapNotNull { f ->
+            val number = recognizer.recognize(f.fileName)?.normalized ?: return@mapNotNull null
+            if (regex != null && !regex.containsMatchIn(f.fileName)) return@mapNotNull null
+            f to number
+        }
+        val items = filtered.take(cap).map { (f, number) ->
             ScanPreviewItem(
                 sourcePath = f.sourcePath,
                 fileName = f.fileName,
                 fileSize = f.fileSize,
                 fileMtime = f.fileMtime,
                 number = number,
-                recognizeStatus = if (number != null) "recognized" else "unrecognized",
+                recognizeStatus = "recognized",
             )
         }
         return ScanPreviewResponse(items = items, total = filtered.size.toLong(), truncated = filtered.size > cap)

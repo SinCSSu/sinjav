@@ -266,6 +266,8 @@ data class SettingsDto(
     val embyBaseUrl: String, val embyApiKey: String,
     val embyProxyHost: String, val embyProxyPort: Int,
     val videoExtensions: String, val minFileSizeMb: Long,
+    /** 扫描默认文件名匹配正则（空 = 不过滤） */
+    val filenamePattern: String,
     /** 图片缓存过期天数（0 = 永久保留） */
     val imagesTtlDays: Int,
 ) {
@@ -285,6 +287,7 @@ data class SettingsDto(
             embyBaseUrl = props.emby.baseUrl, embyApiKey = props.emby.apiKey,
             embyProxyHost = props.emby.proxyHost, embyProxyPort = props.emby.proxyPort,
             videoExtensions = props.scan.videoExtensions, minFileSizeMb = props.scan.minFileSizeMb,
+            filenamePattern = props.scan.filenamePattern,
             imagesTtlDays = props.images.ttlDays,
         )
     }

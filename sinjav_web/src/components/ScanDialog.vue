@@ -11,7 +11,13 @@
       <!-- 左栏：扫描目录配置 -->
       <div class="col col-left">
         <h4 class="col-title">扫描目录</h4>
-        <DirTreeInput v-model="dirInput" />
+        <DirTreeInput v-model="dirInput">
+          <template #append>
+            <el-button type="primary" class="scan-btn" :loading="previewing" @click.stop="doPreview">
+              扫描
+            </el-button>
+          </template>
+        </DirTreeInput>
         <div class="opt-row">
           <span>递归子目录</span>
           <el-switch v-model="recursive" size="small" />
@@ -55,6 +61,18 @@
             共 {{ previewData.total }} 个 · 可识别 {{ recognizedCount }} · 已移除 {{ removedSet.size }}
           </span>
         </div>
+        <div v-if="previewData && previewData.items.length" class="batch-bar">
+          <el-checkbox
+            :model-value="allSelected"
+            :indeterminate="selectedSet.size > 0 && !allSelected"
+            @change="toggleSelectAll"
+          >
+            全选
+          </el-checkbox>
+          <el-button type="danger" size="small" :disabled="selectedSet.size === 0" @click="removeSelected">
+            移除所选{{ selectedSet.size ? ` (${selectedSet.size})` : '' }}
+          </el-button>
+        </div>
         <el-alert
           v-if="previewError"
           :title="previewError"
@@ -80,6 +98,12 @@
             :class="{ removed: removedSet.has(item.sourcePath), active: selectedFile?.sourcePath === item.sourcePath }"
             @click="selectedFile = item"
           >
+            <span class="row-check" @click.stop>
+              <el-checkbox
+                :model-value="selectedSet.has(item.sourcePath)"
+                @change="toggleSelect(item.sourcePath)"
+              />
+            </span>
             <div class="row-main">
               <div class="row-name" :title="item.sourcePath">{{ item.fileName }}</div>
               <div class="row-meta">
@@ -141,9 +165,6 @@
 
     <template #footer>
       <div class="dialog-footer">
-        <el-button type="primary" :loading="previewing" @click="doPreview">
-          扫描
-        </el-button>
         <el-button
           type="success"
           :loading="committing"
@@ -185,6 +206,7 @@ async function loadDefaults() {
       .map((x) => x.trim())
       .filter(Boolean)
     minFileSizeMb.value = s.minFileSizeMb ?? 0
+    filenamePattern.value = s.filenamePattern ?? ''
   } catch {
     // 获取失败保持空值，后端仍会回退全局配置
   }
@@ -201,6 +223,7 @@ function resetAll() {
   previewData.value = null
   previewError.value = ''
   removedSet.value = new Set()
+  selectedSet.value = new Set()
   selectedFile.value = null
 }
 
@@ -217,7 +240,31 @@ const committing = ref(false)
 const previewData = ref<ScanPreviewResponse | null>(null)
 const previewError = ref('')
 const removedSet = ref(new Set<string>())
+const selectedSet = ref(new Set<string>())
 const selectedFile = ref<ScanPreviewItem | null>(null)
+
+const allSelected = computed(
+  () =>
+    previewData.value != null &&
+    previewData.value.items.length > 0 &&
+    previewData.value.items.every((i) => selectedSet.value.has(i.sourcePath)),
+)
+
+function toggleSelect(path: string) {
+  if (selectedSet.value.has(path)) selectedSet.value.delete(path)
+  else selectedSet.value.add(path)
+}
+
+function toggleSelectAll(checked: unknown) {
+  selectedSet.value = checked
+    ? new Set(previewData.value?.items.map((i) => i.sourcePath) ?? [])
+    : new Set()
+}
+
+function removeSelected() {
+  selectedSet.value.forEach((p) => removedSet.value.add(p))
+  selectedSet.value = new Set()
+}
 
 const recognizedCount = computed(
   () => previewData.value?.items.filter((i) => i.number).length ?? 0,
@@ -240,6 +287,7 @@ async function doPreview() {
   previewError.value = ''
   previewData.value = null
   removedSet.value = new Set()
+  selectedSet.value = new Set()
   selectedFile.value = null
   try {
     previewData.value = await api.previewScan({
@@ -321,6 +369,19 @@ function isPlayable(path: string): boolean {
 .col-left {
   width: 300px;
 }
+/* 扫描按钮：主题靛蓝实底填充 + 白色粗体文字，显眼且与主题协调 */
+.scan-btn {
+  background: var(--el-color-primary) !important;
+  border: 1px solid var(--el-color-primary) !important;
+  color: #fff !important;
+  font-weight: 600;
+}
+.scan-btn:hover,
+.scan-btn:focus {
+  background: var(--el-color-primary-dark-2) !important;
+  border-color: var(--el-color-primary-dark-2) !important;
+  color: #fff !important;
+}
 .opt-row {
   display: flex;
   align-items: center;
@@ -351,6 +412,15 @@ function isPlayable(path: string): boolean {
 .stat {
   font-size: 12px;
   color: var(--el-text-color-secondary);
+}
+.batch-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.row-check {
+  display: flex;
+  align-items: center;
 }
 .result-list {
   flex: 1;

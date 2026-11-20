@@ -2,11 +2,11 @@
   <div class="dir-tree-input">
     <el-input
       v-model="model"
-      placeholder="输入或选择目录"
-      @click="open = true"
+      placeholder="点击选择目录，或直接输入路径"
+      @click="open = !open"
     >
-      <template #append>
-        <el-button @click="open = !open">目录树</el-button>
+      <template v-if="$slots.append" #append>
+        <slot name="append" />
       </template>
     </el-input>
     <el-collapse-transition>
@@ -82,6 +82,18 @@ function onNodeClick(data: FsNode, node: unknown) {
 </script>
 
 <style scoped>
+/* append 插槽内的按钮撑满整个附加区：左边缘直角与输入框衔接，右侧保留圆角 */
+.dir-tree-input :deep(.el-input-group__append) {
+  padding: 0;
+}
+.dir-tree-input :deep(.el-input-group__append .el-button) {
+  height: 100%;
+  min-height: 100%;
+  margin: 0;
+  border-radius: 0 4px 4px 0;
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
+}
 .tree-wrap {
   margin-top: 6px;
   border: 1px solid var(--el-border-color-lighter);

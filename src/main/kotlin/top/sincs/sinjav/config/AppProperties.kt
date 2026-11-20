@@ -43,6 +43,8 @@ data class OrganizeProps(
 data class ScanProps(
     var videoExtensions: String = "mp4, mkv, avi, wmv, iso, rmvb, ts, m2ts, mov, flv",
     var minFileSizeMb: Long = 50,
+    /** 文件名匹配正则（空 = 不过滤）；扫描/预览未显式指定时回退到此默认值 */
+    var filenamePattern: String = "",
 )
 
 /** Emby 集成：服务地址（如 http://127.0.0.1:8096）+ API Key（控制台「API 密钥」生成）+ 独立代理（留空直连） */

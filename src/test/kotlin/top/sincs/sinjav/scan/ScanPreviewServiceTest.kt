@@ -7,7 +7,7 @@ import top.sincs.sinjav.config.AppProperties
 import top.sincs.sinjav.config.ScanProps
 import java.nio.file.Files
 
-/** 预览扫描：同步遍历返回候选文件，支持文件名正则过滤与截断。 */
+/** 预览扫描：同步遍历返回候选文件，仅保留识别出番号的文件，支持文件名正则过滤与截断。 */
 class ScanPreviewServiceTest {
 
     /** globalMinMb：全局配置的最小文件大小（模拟用户在设置页配置的默认值） */
@@ -20,7 +20,7 @@ class ScanPreviewServiceTest {
         )
 
     @Test
-    fun `预览返回候选文件与识别番号`() {
+    fun `预览仅返回识别出番号的文件`() {
         val base = Files.createTempDirectory("sinjav-preview")
         val big = ByteArray(2 * 1024 * 1024)
         Files.write(base.resolve("PFES-107-UC.mp4"), big)
@@ -36,13 +36,14 @@ class ScanPreviewServiceTest {
             minFileSizeMb = 0,
             filenamePattern = null,
         )
-        assertTrue(resp.total >= 3, "应包含大文件 3 个（过滤 tiny）: ${resp.items.map { it.fileName }}")
+        assertEquals(
+            listOf("PFES-107-UC.mp4", "ABCD-001.mp4"),
+            resp.items.map { it.fileName },
+            "应只保留识别出番号的大文件（过滤 test/tiny）",
+        )
         val pfes = resp.items.first { it.fileName == "PFES-107-UC.mp4" }
         assertEquals("PFES-107", pfes.number)
         assertEquals("recognized", pfes.recognizeStatus)
-        val test = resp.items.first { it.fileName == "test.mp4" }
-        assertEquals(null, test.number)
-        assertEquals("unrecognized", test.recognizeStatus)
         assertTrue(resp.items.any { it.fileName == "ABCD-001.mp4" }, "递归应包含子目录文件")
         assertFalse(resp.truncated)
     }

@@ -34,15 +34,16 @@ class ScanService(
      */
     fun execute(jobId: Long, params: ScanParams) {
         val minSize = params.minFileSizeMb ?: props.scan.minFileSizeMb
+        val effectivePattern = params.filenamePattern ?: props.scan.filenamePattern.trim().takeIf { it.isNotEmpty() }
         log.info(
-            "扫描开始 jobId={} 目录={} recursive={} 最小体积={}MB 扩展名={}",
+            "扫描开始 jobId={} 目录={} recursive={} 最小体积={}MB 扩展名={} 文件名正则={}",
             jobId, params.sourceDirs, params.recursive, minSize,
-            params.extensions.ifEmpty { "全部" },
+            params.extensions.ifEmpty { "全部" }, effectivePattern ?: "无",
         )
         val files = try {
             applyFilters(
                 scanner.scan(params.sourceDirs, params.recursive, params.extensions, minSize),
-                params.excludePaths, params.filenamePattern,
+                params.excludePaths, effectivePattern,
             )
         } catch (e: IllegalArgumentException) {
             jobs.appendError(jobId, "scan", e.message ?: "非法参数")
@@ -56,7 +57,7 @@ class ScanService(
         }
         log.info(
             "扫描过滤完成 jobId={} 遍历后保留 {} 个文件（排除清单 {} 条，文件名正则 {}）",
-            jobId, files.size, params.excludePaths.size, params.filenamePattern ?: "无",
+            jobId, files.size, params.excludePaths.size, effectivePattern ?: "无",
         )
 
         jobs.setTotalItems(jobId, files.size)

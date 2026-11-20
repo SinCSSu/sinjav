@@ -322,6 +322,8 @@ export type SettingsUpdate = {
   /** 只读：扫描全局配置（GET 返回，PUT 忽略），供扫描弹窗高级选项回填 */
   videoExtensions?: string
   minFileSizeMb?: number
+  /** 扫描默认文件名匹配正则（空 = 不过滤） */
+  filenamePattern?: string
 }
 
 export type Settings = SettingsUpdate
