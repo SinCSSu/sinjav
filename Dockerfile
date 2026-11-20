@@ -1,4 +1,3 @@
-# syntax=docker/dockerfile:1
 # 多阶段构建：前端 dist 并入 Spring Boot 静态资源（页面与 API 同源，单容器部署）
 
 # ---------- 阶段 1：前端构建（Vite 8 需要 Node 20.19+/22+） ----------
