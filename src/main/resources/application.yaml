@@ -56,7 +56,7 @@ sinjav:
   organize:
     target-dir: ""
     mode: hardlink            # hardlink | symlink | move | copy
-    naming-template: "{number}/{number} - {title}"
+    naming-template: "{number}/{number}"
     conflict-policy: skip     # skip | overwrite | rename
     generate-nfo: true
     download-images: true

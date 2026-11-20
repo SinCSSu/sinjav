@@ -99,6 +99,8 @@ docker compose up -d
 
 启动时 `sinjav` 会等 `trawl` 健康检查通过；`trawl` 生成的 CA 证书通过共享数据卷只读挂载给 `sinjav`（`SINJAV_SCRAPER_CF_CA_CERT_PATH=/ca/trawl_ca.pem`）。数据落在 `./data`（SQLite + 图片缓存），视频目录通过 `SINJAV_MEDIA_DIR` 环境变量指定（默认 `./media`），整理时按容器内路径 `/media/...` 填写。
 
+**如果要使用软链接整理模式，请保证容器内映射路径和宿主机系统路径保持严格一致**（例如宿主机 `/data/media` 映射为容器内 `/data/media`，而不是映射到 `/media`），否则生成的软链接在容器外会指向不存在的路径，软链接无法生效。
+
 ## 配置
 
 配置分两层：
