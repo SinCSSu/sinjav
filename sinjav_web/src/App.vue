@@ -1,5 +1,11 @@
 <template>
-  <el-container class="layout">
+  <!-- 公开页（登录）：整页渲染，无侧栏/顶栏 -->
+  <el-container v-if="route.meta.public" class="layout">
+    <el-main class="main public-main">
+      <router-view />
+    </el-main>
+  </el-container>
+  <el-container v-else class="layout">
     <el-aside width="200px" class="sidebar">
       <div class="logo">
         <el-icon :size="22"><VideoCamera /></el-icon>
@@ -28,21 +34,87 @@
         </el-menu-item>
       </el-menu>
     </el-aside>
-    <el-main class="main">
-      <router-view />
-    </el-main>
+    <el-container class="body-col">
+      <el-header class="topbar" height="52px">
+        <span />
+        <el-dropdown v-if="username" trigger="click">
+          <span class="user-chip">
+            <el-icon><User /></el-icon>
+            {{ username }}
+            <el-icon><ArrowDown /></el-icon>
+          </span>
+          <template #dropdown>
+            <el-dropdown-menu>
+              <el-dropdown-item @click="logout">退出登录</el-dropdown-item>
+            </el-dropdown-menu>
+          </template>
+        </el-dropdown>
+      </el-header>
+      <el-main class="main">
+        <router-view />
+      </el-main>
+    </el-container>
   </el-container>
 </template>
 
 <script setup lang="ts">
+import { ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
+import { api } from './api'
+import { isLoggedIn, setLoggedOut } from './auth'
 
 const route = useRoute()
+const username = ref<string | null>(null)
+
+// 进入受保护页面时加载/刷新当前用户名（登录成功后从公开页切回时也会触发）
+watch(
+  () => route.meta.public,
+  async (pub) => {
+    if (pub || !isLoggedIn()) return
+    try {
+      const st = await api.authStatus()
+      username.value = st.username ?? null
+    } catch {
+      // 未登录由路由守卫处理
+    }
+  },
+  { immediate: true },
+)
+
+async function logout() {
+  try {
+    await api.authLogout()
+  } catch {
+    // 会话可能已失效，忽略
+  }
+  setLoggedOut()
+  location.hash = '#/login'
+}
 </script>
 
 <style scoped>
 .layout {
   height: 100vh;
+}
+.body-col {
+  min-width: 0;
+}
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 8px;
+}
+.user-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--el-text-color-primary);
+}
+.public-main {
+  padding: 0;
 }
 .sidebar {
   margin: 12px 0 12px 12px;

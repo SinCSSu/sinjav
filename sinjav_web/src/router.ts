@@ -1,9 +1,16 @@
 import { createRouter, createWebHashHistory } from 'vue-router'
+import { isLoggedIn } from './auth'
 
 const router = createRouter({
   history: createWebHashHistory(),
   routes: [
     { path: '/', redirect: '/dashboard' },
+    {
+      path: '/login',
+      name: 'login',
+      component: () => import('./views/LoginView.vue'),
+      meta: { title: '登录', public: true },
+    },
     {
       path: '/dashboard',
       name: 'dashboard',
@@ -35,6 +42,13 @@ const router = createRouter({
       meta: { title: '设置' },
     },
   ],
+})
+
+// 登录守卫：未登录访问受保护页面 → 跳登录页并记录原目标
+router.beforeEach((to) => {
+  if (to.meta.public) return true
+  if (!isLoggedIn()) return { path: '/login', query: { redirect: to.fullPath } }
+  return true
 })
 
 router.afterEach((to) => {
