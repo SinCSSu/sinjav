@@ -9,18 +9,8 @@
       <section class="brand-panel">
         <div class="brand-orb" />
         <div class="brand-content">
-          <div class="brand-mark">
-            <el-icon :size="28"><VideoCamera /></el-icon>
-          </div>
           <h1>sinJav</h1>
-          <p class="brand-tagline">让本地媒体库，井井有条</p>
-          <ul class="brand-points">
-            <li><el-icon><MagicStick /></el-icon><span>多源刮削，逐字段比对合并</span></li>
-            <li><el-icon><FolderChecked /></el-icon><span>智能整理与 NFO 元数据</span></li>
-            <li><el-icon><Lock /></el-icon><span>数据留在本地，私密可控</span></li>
-          </ul>
         </div>
-        <div class="brand-foot">sinJav · Local Media Library</div>
       </section>
 
       <!-- 表单侧 -->
@@ -32,9 +22,6 @@
           </div>
           <p class="eyebrow">{{ mode === 'init' ? 'FIRST SETUP' : 'WELCOME BACK' }}</p>
           <h2 class="title">{{ mode === 'init' ? '创建管理员账号' : '登录' }}</h2>
-          <p class="sub">
-            {{ mode === 'init' ? '首次使用，设置一组凭据来保护你的媒体库' : '输入账号密码，继续管理你的影片库' }}
-          </p>
 
           <!-- 状态检查中：避免登录表单闪一下再切成初始化向导 -->
           <div v-if="checking" class="checking">
@@ -93,12 +80,6 @@
               <el-icon v-if="!busy" class="btn-arrow" :size="16"><ArrowRight /></el-icon>
             </el-button>
           </el-form>
-
-          <p v-if="mode === 'init'" class="foot-hint">
-            <el-icon :size="13"><Lock /></el-icon>
-            密码以 BCrypt 加密保存在本地数据库，不会上传
-          </p>
-          <p v-else class="foot-hint">按 Enter 键快速登录</p>
         </div>
       </section>
     </div>
@@ -108,8 +89,8 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import {
-  ArrowRight, CircleCheck, FolderChecked, Key, Loading, Lock, MagicStick,
-  User, VideoCamera, WarningFilled,
+  ArrowRight, CircleCheck, Key, Loading, Lock,
+  User, WarningFilled,
 } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import { api } from '../api'
@@ -242,9 +223,9 @@ async function submit() {
 .brand-panel {
   position: relative;
   display: flex;
-  flex-direction: column;
-  justify-content: space-between;
-  padding: 46px 38px 30px;
+  align-items: center;
+  justify-content: center;
+  padding: 46px 38px;
   color: #fff;
   overflow: hidden;
   background: linear-gradient(150deg, #5b6ee1 0%, #7b6fe0 55%, #9b7ad8 100%);
@@ -271,54 +252,11 @@ async function submit() {
   animation: float 12s ease-in-out infinite alternate;
 }
 .brand-content { position: relative; z-index: 1; }
-.brand-mark {
-  width: 52px;
-  height: 52px;
-  border-radius: 16px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: rgba(255, 255, 255, 0.2);
-  border: 1px solid rgba(255, 255, 255, 0.38);
-  backdrop-filter: blur(8px);
-}
 .brand-content h1 {
-  font-size: 40px;
+  font-size: 44px;
   font-weight: 700;
-  letter-spacing: 1px;
-  margin: 26px 0 6px;
-}
-.brand-tagline { font-size: 14px; opacity: 0.86; margin: 0 0 38px; }
-.brand-points {
-  list-style: none;
-  padding: 0;
+  letter-spacing: 2px;
   margin: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 18px;
-}
-.brand-points li {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  font-size: 13px;
-  opacity: 0.94;
-}
-.brand-points li :deep(.el-icon) {
-  flex-shrink: 0;
-  width: 28px;
-  height: 28px;
-  border-radius: 9px;
-  background: rgba(255, 255, 255, 0.16);
-  padding: 6px;
-  box-sizing: border-box;
-}
-.brand-foot {
-  position: relative;
-  z-index: 1;
-  font-size: 11px;
-  letter-spacing: 0.6px;
-  opacity: 0.65;
 }
 .form-panel {
   position: relative;
@@ -361,14 +299,8 @@ async function submit() {
 .title {
   font-size: 25px;
   font-weight: 700;
-  margin: 0 0 8px;
-  color: var(--el-text-color-primary);
-}
-.sub {
-  font-size: 12.5px;
-  line-height: 1.7;
-  color: var(--el-text-color-secondary);
   margin: 0 0 26px;
+  color: var(--el-text-color-primary);
 }
 .field { margin-bottom: 18px; }
 .field label {
@@ -444,16 +376,6 @@ async function submit() {
   box-shadow: 0 12px 26px rgba(91, 110, 225, 0.42);
 }
 .btn-arrow { margin-left: 8px; }
-.foot-hint {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  text-align: center;
-  font-size: 11px;
-  color: var(--el-text-color-secondary);
-  margin: 20px 0 0;
-}
 .checking {
   height: 220px;
   display: flex;
