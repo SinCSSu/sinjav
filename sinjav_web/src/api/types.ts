@@ -2,6 +2,24 @@
 
 export type JobType = 'scan' | 'scrape' | 'organize' | 'pipeline'
 export type JobStatus = 'running' | 'completed' | 'failed' | 'cancelled'
+
+// ---------- 登录认证 ----------
+
+export interface AuthStatus {
+  initialized: boolean
+  username?: string | null
+  authenticated: boolean
+}
+
+export interface LoginResult {
+  username: string
+}
+
+export interface CredentialsUpdate {
+  currentPassword: string
+  username?: string
+  newPassword?: string
+}
 export type MovieStatus = 'pending' | 'scraped' | 'failed'
 export type RecognizeStatus = 'recognized' | 'unrecognized' | 'filtered'
 export type OrganizeStatus = 'pending' | 'organized' | 'failed' | 'skipped'

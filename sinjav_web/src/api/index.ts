@@ -1,4 +1,6 @@
 import type {
+  AuthStatus,
+  CredentialsUpdate,
   EmbyRescrapeApplyRequest,
   EmbyItemDetail,
   EmbyLibrary,
@@ -12,6 +14,7 @@ import type {
   JobAccepted,
   JobStatus,
   JobType,
+  LoginResult,
   MovieDetail,
   MovieSort,
   MovieStatus,
@@ -37,6 +40,7 @@ import type {
   Settings,
   SettingsUpdate,
 } from './types'
+import { redirectToLogin } from '../auth'
 
 const BASE = '/api/v1'
 
@@ -80,6 +84,11 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     })
   } catch {
     throw new Error('无法连接后端服务（localhost:8656）')
+  }
+  // 会话失效统一跳登录页（认证接口自身除外，由登录页自行处理）
+  if (res.status === 401 && !path.startsWith('/auth/')) {
+    redirectToLogin()
+    throw new Error('未登录或会话已过期，请重新登录')
   }
   if (!res.ok) {
     let message = `请求失败（HTTP ${res.status}）`
@@ -189,6 +198,23 @@ export const api = {
   },
   triggerPipeline(body: PipelineRequest) {
     return post<JobAccepted>('/pipeline', body)
+  },
+
+  // 认证
+  authStatus() {
+    return request<AuthStatus>('/auth/status')
+  },
+  authInit(username: string, password: string) {
+    return post<LoginResult>('/auth/init', { username, password })
+  },
+  authLogin(username: string, password: string) {
+    return post<LoginResult>('/auth/login', { username, password })
+  },
+  authLogout() {
+    return post<void>('/auth/logout', {})
+  },
+  authUpdateCredentials(body: CredentialsUpdate) {
+    return put<LoginResult>('/auth/credentials', body)
   },
 
   // 影片
