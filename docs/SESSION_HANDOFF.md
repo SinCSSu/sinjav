@@ -36,6 +36,7 @@ JAV 影片自动整理 + 元数据刮削器后端（参考 Solr159/JavBoss 的�
 - `@Async` 自调用失效 → 异步执行体拆到独立 `JobRunner`（`open fun` + `@Async("jobExecutor")`）
 - 整理命名模板语义：渲染结果的**除最后一段外是子目录，最后一段是目标文件基名**（扩展名沿用源文件）。默认模板 `{number}/{number}`——转移后的文件名即番号（2026-11-20 需求，原为 `{number}/{number} - {title}`；用户已保存过设置的话需自行更新设置页模板）
 - **整理任务完成后自动触发 Emby 全库刷新**（JobRunner.runOrganize/runPipeline 末尾，EmbyClient.refreshLibrary → POST /Library/Refresh）：Emby 未配置（baseUrl/apiKey 空）时跳过；刷新失败只 appendError 记录，不影响整理任务结果
+- **CF 过盾专用信任管理器**（HttpClientFactory.MitmTrustManager）：MITM 签发的证书按「CA 验签 + 有效期」信任，不走 JDK PKIX 字节级 DN 链匹配——部分 MITM 代理（trawl）签子证书时 issuer DN 的 ASN.1 编码与 CA subject 不一致，JDK 会误判「Path does not chain」而 openssl 规范化比较通过；代理直通的真实站点证书回退 JDK 标准 PKIX。TLS 握手实际收到的证书链由 LoggingTrustManager 打进日志（诊断用）
 - 整理目标目录与整理方式已从全局配置移除（V3 迁移清掉 settings 行）：OrganizeRequest/OrganizePreviewRequest/pipeline 的 organize 段**每次必须显式传 targetDir + mode**（DTO @NotBlank，Organizer 内 requiredMode/requiredTargetDir 兜底）；命名模板/冲突策略/nfo/图片仍是全局可覆盖
 - 整理重整语义（前端三列整理弹窗）：已 organized 记录再整理 = 重整。链接/复制类删除旧目标文件及同目录 movie.nfo/poster/fanart/preview*.jpg（目录空则移除）；move 类不删文件，把 source_path 重置为旧 target_path 后重新整理，且重整不能用链接模式（源文件已不在源位置）。逐条覆盖走 OrganizeRequest.items（recordId + 可选 targetPath/mode）；预览走 POST /organize/preview（同步、只算路径不执行）
 - 刮削翻译：ScrapeService 落库前经 TranslationService 翻译——标题译中文存 title（原标题存 title_orig 列，V2 迁移；NFO originaltitle 用原标题）；简介存「中文简介\n\n原简介」。翻译源优先级 DeepL(deepl-api-key) > 百度(baidu-translate-app-id/secret) > Google 免费接口兜底，设置页可配，失败回退原文不阻断刮削。**整理路径 {title} 占位符用 title_orig（无则回退 title），保存路径不使用译名**

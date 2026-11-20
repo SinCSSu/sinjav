@@ -100,7 +100,12 @@ class HttpClientFactory(private val props: AppProperties) {
     }
 
     /**
-     * 构造「JVM 默认 cacerts + trawl CA」合并信任库，不影响其他 https 站点校验。
+     * 构造 CF 过盾代理专用 SSLContext：
+     * - MITM 签发的证书（issuer = 配置的 CA）→ 用「签名验证 + 有效期」信任。
+     *   不走 JDK PKIX 严格链校验：部分 MITM 代理签发子证书时 issuer DN 的 ASN.1 编码
+     *   （字符串类型/顺序）与 CA subject 不完全一致，JDK 按字节比较 DN 会判不信任链
+     *   （「Path does not chain with any of the trust anchors」），而 openssl 规范化比较可通过。
+     * - 其余证书（代理直通的真实站点）→ 回退 JDK 标准 PKIX（默认 cacerts + CA 合并信任库）。
      * 路径未配置或加载失败时返回 null（退回默认信任库）。
      * 支持两种路径：classpath:ca.crt（打进 jar 的资源）或文件系统路径（如挂载 trawl_ca 卷）。
      */
@@ -109,29 +114,31 @@ class HttpClientFactory(private val props: AppProperties) {
         if (path.isBlank()) return null
         val certStream = openCertStream(path) ?: return null
         return runCatching {
-            val ks = KeyStore.getInstance(KeyStore.getDefaultType())
-            val cacerts = File(System.getProperty("java.home"), "lib/security/cacerts")
-            ks.load(if (cacerts.isFile) cacerts.inputStream() else null, "changeit".toCharArray())
-            // 证书文件可能是 PEM 链（root + intermediates）：全部加载进信任库，避免漏掉签发 MITM 证书的根
+            val anchors = mutableListOf<java.security.cert.X509Certificate>()
             val cf = CertificateFactory.getInstance("X.509")
+            // 证书文件可能是 PEM 链（root + intermediates）：全部加载
             certStream.use { ins ->
-                val certs = cf.generateCertificates(ins)
-                certs.forEachIndexed { i, cert ->
-                    ks.setCertificateEntry("cf-proxy-ca-$i", cert)
+                cf.generateCertificates(ins).forEachIndexed { i, cert ->
                     val x509 = cert as java.security.cert.X509Certificate
+                    anchors += x509
                     log.info(
                         "CF 过盾信任 CA[{}]: subject={} CA:TRUE={}",
                         i, x509.subjectX500Principal.name, x509.basicConstraints != -1,
                     )
                 }
             }
+
+            val ks = KeyStore.getInstance(KeyStore.getDefaultType())
+            val cacerts = File(System.getProperty("java.home"), "lib/security/cacerts")
+            ks.load(if (cacerts.isFile) cacerts.inputStream() else null, "changeit".toCharArray())
+            anchors.forEachIndexed { i, cert -> ks.setCertificateEntry("cf-proxy-ca-$i", cert) }
             val tmf = TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm())
             tmf.init(ks)
+            val pkix = tmf.trustManagers.filterIsInstance<javax.net.ssl.X509ExtendedTrustManager>().first()
+
             // 包装信任管理器：TLS 握手时把 Java 实际收到的证书链打进日志（诊断 MITM CA 对账）
-            val tms = tmf.trustManagers.map { tm ->
-                if (tm is javax.net.ssl.X509ExtendedTrustManager) LoggingTrustManager(tm, log) else tm
-            }.toTypedArray()
-            SSLContext.getInstance("TLS").apply { init(null, tms, null) }
+            val composite = MitmTrustManager(anchors, pkix)
+            SSLContext.getInstance("TLS").apply { init(null, arrayOf(LoggingTrustManager(composite, log)), null) }
         }.onFailure {
             log.warn("加载 CF 过盾 CA 证书失败({})，使用默认信任库: {}", it.message, path)
         }.getOrNull()
@@ -151,6 +158,62 @@ class HttpClientFactory(private val props: AppProperties) {
 
     private val lock = ReentrantReadWriteLock()
     private var lastRequestAt = 0L
+
+    /**
+     * MITM 代理专用信任管理器：
+     * 证书能被配置的 CA 之一验签且在有效期内 → 信任（不做 JDK 字节级 DN 链匹配）；
+     * 否则回退 JDK 标准 PKIX（覆盖代理直通的真实站点证书）。
+     */
+    private class MitmTrustManager(
+        private val anchors: List<java.security.cert.X509Certificate>,
+        private val fallback: javax.net.ssl.X509ExtendedTrustManager,
+    ) : javax.net.ssl.X509ExtendedTrustManager() {
+
+        private fun validateByAnchors(chain: Array<java.security.cert.X509Certificate>) {
+            val leaf = chain.firstOrNull() ?: throw java.security.cert.CertificateException("空证书链")
+            leaf.checkValidity()
+            for (a in anchors) {
+                try {
+                    leaf.verify(a.publicKey)
+                    return
+                } catch (_: Exception) { /* 换下一张 CA 验签 */ }
+            }
+            throw java.security.cert.CertificateException(
+                "无法用信任的 MITM CA 验签: issuer=${leaf.issuerX500Principal.name}",
+            )
+        }
+
+        override fun checkClientTrusted(chain: Array<java.security.cert.X509Certificate>, authType: String) =
+            fallback.checkClientTrusted(chain, authType)
+
+        override fun checkServerTrusted(chain: Array<java.security.cert.X509Certificate>, authType: String) =
+            fallback.checkServerTrusted(chain, authType)
+
+        override fun checkClientTrusted(chain: Array<java.security.cert.X509Certificate>, authType: String, socket: java.net.Socket?) =
+            fallback.checkClientTrusted(chain, authType, socket)
+
+        override fun checkServerTrusted(chain: Array<java.security.cert.X509Certificate>, authType: String, socket: java.net.Socket?) {
+            try {
+                validateByAnchors(chain)
+            } catch (e: java.security.cert.CertificateException) {
+                fallback.checkServerTrusted(chain, authType, socket)
+            }
+        }
+
+        override fun checkClientTrusted(chain: Array<java.security.cert.X509Certificate>, authType: String, engine: javax.net.ssl.SSLEngine?) =
+            fallback.checkClientTrusted(chain, authType, engine)
+
+        override fun checkServerTrusted(chain: Array<java.security.cert.X509Certificate>, authType: String, engine: javax.net.ssl.SSLEngine?) {
+            try {
+                validateByAnchors(chain)
+            } catch (e: java.security.cert.CertificateException) {
+                fallback.checkServerTrusted(chain, authType, engine)
+            }
+        }
+
+        override fun getAcceptedIssuers(): Array<java.security.cert.X509Certificate> = anchors.toTypedArray()
+    }
+
 
     /** TLS 握手时把实际收到的证书链（subject/issuer/指纹）打进日志后委托原信任管理器 */
     private class LoggingTrustManager(
