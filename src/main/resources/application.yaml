@@ -19,6 +19,14 @@ spring:
 
 server:
   port: 8656
+  servlet:
+    session:
+      timeout: 30d          # 会话 30 天 TTL（访问自动续期）
+      cookie:
+        name: SINJAV_SESSION
+        http-only: true
+        same-site: lax
+        max-age: 30d        # Cookie 不随浏览器关闭失效；每次登录重建会话即续期
 
 sinjav:
   scraper:
