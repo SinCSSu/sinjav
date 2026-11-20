@@ -20,9 +20,11 @@ import java.nio.file.Path
 /**
  * 认证链路集成测试：初始化 → 登录 → 会话可用 → 登出 → 401；改凭据验证当前密码。
  * 防爆破锁定在 AuthLockoutTests（独立上下文，避免全局失败计数污染本类）。
+ * 两个用例共享同一数据库，显式固定执行顺序（改用户名会影响登录凭据）。
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @AutoConfigureTestRestTemplate
+@org.junit.jupiter.api.TestMethodOrder(org.junit.jupiter.api.MethodOrderer.OrderAnnotation::class)
 class AuthFlowTests {
 
     companion object {
@@ -56,6 +58,7 @@ class AuthFlowTests {
     private fun cookieOf(resp: org.springframework.http.ResponseEntity<String>): String? =
         resp.headers[HttpHeaders.SET_COOKIE]?.joinToString("; ") { it.split(";").first() }
 
+    @org.junit.jupiter.api.Order(1)
     @Test
     fun `初始化-登录-受保护接口-登出-401`() {
         // 未登录：受保护接口 401
@@ -81,6 +84,7 @@ class AuthFlowTests {
         assertEquals(HttpStatus.UNAUTHORIZED, exchange("/api/v1/movies", HttpMethod.GET, null, sessionCookie).statusCode)
     }
 
+    @org.junit.jupiter.api.Order(2)
     @Test
     fun `验证当前密码后可改用户名`() {
         val st = rest.getForEntity("/api/v1/auth/status", Map::class.java).body!!

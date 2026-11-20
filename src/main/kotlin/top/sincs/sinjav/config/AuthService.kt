@@ -46,7 +46,8 @@ class AuthService(
 
     fun initialized(): Boolean = load() != null
 
-    /** 初始化凭据（仅库中无凭据时可用，先到先得；已存在返回 409） */
+    /** 初始化凭据（仅库中无凭据时可用，先到先得；已存在返回 409）。进程内同步保证并发 init 检查与写入原子 */
+    @Synchronized
     fun init(username: String, password: String) {
         if (initialized()) throw AuthException(409, "账号已初始化，请直接登录")
         save(username, password)

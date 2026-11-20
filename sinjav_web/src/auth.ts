@@ -18,8 +18,10 @@ export function setLoggedOut(): void {
   localStorage.removeItem(FLAG)
 }
 
-/** 未登录跳转：hash 路由直接改 location，避免 api 与 router 循环依赖 */
+/** 未登录跳转（携带原路径，登录后回跳）：hash 路由直接改 location，避免 api 与 router 循环依赖 */
 export function redirectToLogin(): void {
   setLoggedOut()
-  if (!location.hash.startsWith('#/login')) location.hash = '#/login'
+  if (location.hash.startsWith('#/login')) return
+  const current = location.hash.replace(/^#/, '')
+  location.hash = current ? `#/login?redirect=${encodeURIComponent(current)}` : '#/login'
 }
