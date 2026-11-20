@@ -137,7 +137,7 @@ class HttpClientFactory(private val props: AppProperties) {
             val pkix = tmf.trustManagers.filterIsInstance<javax.net.ssl.X509ExtendedTrustManager>().first()
 
             // 包装信任管理器：TLS 握手时把 Java 实际收到的证书链打进日志（诊断 MITM CA 对账）
-            val composite = MitmTrustManager(anchors, pkix)
+            val composite = MitmTrustManager(anchors, pkix, log)
             SSLContext.getInstance("TLS").apply { init(null, arrayOf(LoggingTrustManager(composite, log)), null) }
         }.onFailure {
             log.warn("加载 CF 过盾 CA 证书失败({})，使用默认信任库: {}", it.message, path)
@@ -167,6 +167,7 @@ class HttpClientFactory(private val props: AppProperties) {
     private class MitmTrustManager(
         private val anchors: List<java.security.cert.X509Certificate>,
         private val fallback: javax.net.ssl.X509ExtendedTrustManager,
+        private val log: org.slf4j.Logger,
     ) : javax.net.ssl.X509ExtendedTrustManager() {
 
         private fun validateByAnchors(chain: Array<java.security.cert.X509Certificate>) {
@@ -186,8 +187,14 @@ class HttpClientFactory(private val props: AppProperties) {
         override fun checkClientTrusted(chain: Array<java.security.cert.X509Certificate>, authType: String) =
             fallback.checkClientTrusted(chain, authType)
 
-        override fun checkServerTrusted(chain: Array<java.security.cert.X509Certificate>, authType: String) =
-            fallback.checkServerTrusted(chain, authType)
+        override fun checkServerTrusted(chain: Array<java.security.cert.X509Certificate>, authType: String) {
+            try {
+                validateByAnchors(chain)
+            } catch (e: java.security.cert.CertificateException) {
+                log.warn("MITM CA 验签失败，回退 JDK PKIX: {}", e.message)
+                fallback.checkServerTrusted(chain, authType)
+            }
+        }
 
         override fun checkClientTrusted(chain: Array<java.security.cert.X509Certificate>, authType: String, socket: java.net.Socket?) =
             fallback.checkClientTrusted(chain, authType, socket)
@@ -196,6 +203,7 @@ class HttpClientFactory(private val props: AppProperties) {
             try {
                 validateByAnchors(chain)
             } catch (e: java.security.cert.CertificateException) {
+                log.warn("MITM CA 验签失败，回退 JDK PKIX: {}", e.message)
                 fallback.checkServerTrusted(chain, authType, socket)
             }
         }
@@ -207,6 +215,7 @@ class HttpClientFactory(private val props: AppProperties) {
             try {
                 validateByAnchors(chain)
             } catch (e: java.security.cert.CertificateException) {
+                log.warn("MITM CA 验签失败，回退 JDK PKIX: {}", e.message)
                 fallback.checkServerTrusted(chain, authType, engine)
             }
         }
@@ -229,10 +238,22 @@ class HttpClientFactory(private val props: AppProperties) {
             chain.forEachIndexed { i, c ->
                 val fp = java.security.MessageDigest.getInstance("SHA-256").digest(c.encoded)
                 log.info(
-                    "TLS({}) 收到证书[{}]: subject={} issuer={} fp={}",
+                    "TLS({}) 收到证书[{}]: subject={} issuer={} fp={} notBefore={}",
                     where, i, c.subjectX500Principal.name, c.issuerX500Principal.name,
-                    java.util.HexFormat.of().formatHex(fp),
+                    java.util.HexFormat.of().formatHex(fp), c.notBefore,
                 )
+                if (i == 0) savePem(c, fp)
+            }
+        }
+
+        /** 把收到的 leaf 证书存盘（data/tls-debug/），供 openssl 离线验证定案 */
+        private fun savePem(cert: java.security.cert.X509Certificate, fp: ByteArray) {
+            runCatching {
+                val dir = java.nio.file.Path.of("data", "tls-debug")
+                java.nio.file.Files.createDirectories(dir)
+                val b64 = java.util.Base64.getMimeEncoder(64, "\n".toByteArray()).encodeToString(cert.encoded)
+                val pem = "-----BEGIN CERTIFICATE-----\n$b64\n-----END CERTIFICATE-----\n"
+                java.nio.file.Files.writeString(dir.resolve("${java.util.HexFormat.of().formatHex(fp)}.pem"), pem)
             }
         }
 
