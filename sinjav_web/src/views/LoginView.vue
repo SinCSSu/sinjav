@@ -226,9 +226,9 @@ async function submit() {
 .brand-panel {
   position: relative;
   display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 46px 38px;
+  flex-direction: column;
+  align-items: flex-start;
+  padding: 40px 38px;
   color: #fff;
   overflow: hidden;
   background: linear-gradient(150deg, #5b6ee1 0%, #7b6fe0 55%, #9b7ad8 100%);
@@ -259,8 +259,8 @@ async function submit() {
   z-index: 1;
   display: flex;
   flex-direction: column;
-  align-items: center;
-  gap: 20px;
+  align-items: flex-start;
+  gap: 14px;
 }
 .brand-mark {
   width: 56px;
