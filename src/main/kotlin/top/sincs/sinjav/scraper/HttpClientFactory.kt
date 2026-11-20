@@ -112,9 +112,18 @@ class HttpClientFactory(private val props: AppProperties) {
             val ks = KeyStore.getInstance(KeyStore.getDefaultType())
             val cacerts = File(System.getProperty("java.home"), "lib/security/cacerts")
             ks.load(if (cacerts.isFile) cacerts.inputStream() else null, "changeit".toCharArray())
+            // 证书文件可能是 PEM 链（root + intermediates）：全部加载进信任库，避免漏掉签发 MITM 证书的根
+            val cf = CertificateFactory.getInstance("X.509")
             certStream.use { ins ->
-                val cert = CertificateFactory.getInstance("X.509").generateCertificate(ins)
-                ks.setCertificateEntry("cf-proxy-ca", cert)
+                val certs = cf.generateCertificates(ins)
+                certs.forEachIndexed { i, cert ->
+                    ks.setCertificateEntry("cf-proxy-ca-$i", cert)
+                    val x509 = cert as java.security.cert.X509Certificate
+                    log.info(
+                        "CF 过盾信任 CA[{}]: subject={} CA:TRUE={}",
+                        i, x509.subjectX500Principal.name, x509.basicConstraints != -1,
+                    )
+                }
             }
             val tmf = TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm())
             tmf.init(ks)
