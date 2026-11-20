@@ -308,10 +308,51 @@ body::after {
   margin-bottom: 18px;
 }
 .page-header h2 {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
   margin: 0;
   font-size: 21px;
   font-weight: 650;
   letter-spacing: 0.3px;
+}
+/* 页标题左侧渐变标识，统一各页视觉重心 */
+.page-header h2::before {
+  content: '';
+  width: 4px;
+  height: 20px;
+  border-radius: 3px;
+  background: linear-gradient(180deg, var(--el-color-primary), #a98ce4);
+  box-shadow: 0 2px 8px rgba(91, 110, 225, 0.35);
+}
+
+/* 卡片头部：明确分区层级 */
+.el-card__header {
+  padding: 14px 18px !important;
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+  border-bottom: 1px solid var(--glass-border-soft) !important;
+}
+
+/* 主按钮渐变化，与普通按钮拉开层级 */
+.el-button--primary:not(.is-disabled):not(.is-plain):not(.is-text) {
+  background-image: linear-gradient(100deg, var(--el-color-primary), #8b7ce0);
+  border-color: transparent;
+  box-shadow: 0 4px 14px rgba(91, 110, 225, 0.26);
+  transition: transform 0.2s, box-shadow 0.2s, filter 0.2s;
+}
+.el-button--primary:not(.is-disabled):not(.is-plain):not(.is-text):hover {
+  transform: translateY(-1px);
+  box-shadow: 0 8px 20px rgba(91, 110, 225, 0.38);
+  filter: brightness(1.05);
+}
+
+/* 全站小字提示基线（组件内 scoped 同名类可继续覆盖） */
+.hint {
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--el-text-color-secondary);
 }
 
 .toolbar {

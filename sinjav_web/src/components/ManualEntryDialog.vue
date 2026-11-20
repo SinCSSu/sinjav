@@ -15,7 +15,7 @@
         </el-col>
         <el-col :span="14">
           <el-form-item label="标题">
-            <el-input v-model="form.title" placeholder="落库为「番号-标题」" />
+            <el-input v-model="form.title" />
           </el-form-item>
         </el-col>
       </el-row>

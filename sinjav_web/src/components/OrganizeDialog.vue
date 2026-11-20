@@ -127,10 +127,7 @@
 
       <!-- 右侧列：预览 -->
       <section class="col col-preview">
-        <div class="col-title">
-          预览（{{ previews.length }}）
-          <span v-if="previews.length" class="col-title-tip">可修改目标路径 / 整理方式，按修改后的内容整理</span>
-        </div>
+        <div class="col-title">预览（{{ previews.length }}）</div>
         <div class="card-list preview-list">
           <div v-for="p in previews" :key="p.recordId" class="preview-card">
             <div class="preview-top">
@@ -171,7 +168,7 @@
               </el-form>
             </template>
           </div>
-          <el-empty v-if="!previews.length" description="选中媒体后点击「预览选中」" :image-size="60" />
+          <el-empty v-if="!previews.length" description="暂无预览" :image-size="60" />
         </div>
       </section>
     </div>
@@ -480,12 +477,7 @@ async function organizeAll() {
   margin-bottom: 10px;
   flex-shrink: 0;
 }
-.col-title-tip {
-  font-size: 12px;
-  font-weight: 400;
-  color: var(--el-text-color-secondary);
-  margin-left: 6px;
-}
+
 .param-form :deep(.el-form-item) {
   margin-bottom: 14px;
 }

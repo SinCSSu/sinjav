@@ -113,7 +113,6 @@
                 @keyup.enter="rescrapeByNumber"
               />
               <el-button size="small" :loading="refreshing" @click="rescrapeByNumber">重新刮削</el-button>
-              <span class="cmp-hint">番号识别错了可修改后重新刮削；逐字段选择来源后可直接编辑值，「留空」= 不回写该字段；点「翻译」对标题/简介/类别做翻译或繁→简转换并回填，保存时按输入框当前内容回写 Emby</span>
             </span>
             <el-button size="small" text @click="preview = null">关闭</el-button>
           </div>
@@ -382,7 +381,7 @@ async function translateFields() {
     for (const k of ['title', 'plot', 'genres'] as const) {
       if (res[k]) vals.value[k] = res[k]!
     }
-    ElMessage.success('翻译完成，保存时按输入框当前内容回写 Emby')
+    ElMessage.success('翻译完成')
   } catch (e) {
     ElMessage.error(e instanceof Error ? e.message : String(e))
   } finally {
@@ -588,12 +587,7 @@ async function applyPreview() {
   font-size: 13px;
   margin-bottom: 10px;
 }
-.cmp-hint {
-  display: block;
-  font-size: 12px;
-  color: var(--el-text-color-secondary);
-  margin-top: 2px;
-}
+
 .num-input {
   width: 170px;
   margin: 0 6px;

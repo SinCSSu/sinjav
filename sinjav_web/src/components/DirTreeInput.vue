@@ -2,7 +2,7 @@
   <div class="dir-tree-input">
     <el-input
       v-model="model"
-      placeholder="双击目录树节点填入路径，或手动输入"
+      placeholder="输入或选择目录"
       @click="open = true"
     >
       <template #append>

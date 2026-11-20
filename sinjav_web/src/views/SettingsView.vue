@@ -49,29 +49,24 @@
             >
               <el-option v-for="s in sourceOptions" :key="s" :label="s" :value="s" />
             </el-select>
-            <span class="hint">勾选的数据源请求与图片走 trawl 过盾代理，其余走全局代理/直连</span>
           </el-form-item>
           <el-form-item label="请求间隔 (ms)">
             <el-input-number v-model="form.requestIntervalMs" :min="0" :step="100" />
-            <span class="hint">限速防风控</span>
           </el-form-item>
           <el-form-item label="并发数">
             <el-input-number v-model="form.concurrency" :min="1" :max="32" />
-            <span class="hint">同时刮削的影片数；每个影片会并发请求所有数据源</span>
           </el-form-item>
           <el-form-item label="请求超时 (ms)">
             <el-input-number v-model="form.timeoutMs" :min="1000" :max="120000" :step="1000" />
-            <span class="hint">普通请求（直连/全局代理）的超时时间</span>
           </el-form-item>
           <el-form-item label="过盾超时 (ms)">
             <el-input-number v-model="form.cfTimeoutMs" :min="1000" :max="600000" :step="5000" />
-            <span class="hint">走过盾代理的请求超时，需等待 CF 挑战，建议比普通超时长</span>
           </el-form-item>
-          <el-divider content-position="left">翻译设置（DeepL &gt; 百度 &gt; Google 兜底）</el-divider>
+          <el-divider content-position="left">翻译设置</el-divider>
           <el-form-item label="DeepL API Key">
             <el-input
               v-model="form.deeplApiKey"
-              placeholder="配置后翻译优先使用 DeepL；免费 key 以 :fx 结尾"
+              placeholder="免费 key 以 :fx 结尾"
               style="max-width: 500px"
               show-password
             />
@@ -79,7 +74,7 @@
           <el-form-item label="百度 APP ID">
             <el-input
               v-model="form.baiduTranslateAppId"
-              placeholder="百度翻译开放平台 APP ID；未配置 DeepL 时使用"
+              placeholder="百度翻译开放平台 APP ID"
               style="max-width: 500px"
             />
           </el-form-item>
@@ -92,9 +87,7 @@
             />
           </el-form-item>
           <el-form-item>
-            <span class="hint">
-              未配置任何 API 时使用 Google 免费接口（国内网络需在上方配置代理）；翻译失败的条目保留原文
-            </span>
+            <span class="hint">未配置 API 时使用 Google 免费接口（国内需代理）</span>
           </el-form-item>
         </el-form>
       </el-card>
@@ -145,9 +138,7 @@
               style="max-width: 500px"
               placeholder="{number}/{number}"
             />
-            <div class="hint">
-              占位符：{number} {title} {date} {maker} {series} {actress}；最后一段为文件基名，之前为子目录
-            </div>
+            <div class="hint">占位符：{number} {title} {date} {maker} {series} {actress}</div>
           </el-form-item>
           <el-form-item label="冲突策略">
             <el-select v-model="form.conflictPolicy" style="width: 200px">
@@ -165,7 +156,7 @@
           <el-divider content-position="left">图片缓存</el-divider>
           <el-form-item label="缓存有效期">
             <el-input-number v-model="form.imagesTtlDays" :min="0" :max="365" />
-            <span class="hint">天；过期缓存图片每日 04:00 自动清理，重新刮削的影片自动续期；0 = 永久保留</span>
+            <span class="hint">天；0 = 永久保留</span>
           </el-form-item>
           <el-form-item label=" ">
             <el-button :loading="cleaning" @click="cleanupCache">清理缓存</el-button>
@@ -193,17 +184,13 @@
           </el-form-item>
           <el-form-item label="代理端口">
             <el-input-number v-model="embyProxyPortModel" :min="0" :max="65535" />
-            <span class="hint">Emby 专用代理，与刮削代理互不影响</span>
           </el-form-item>
           <el-form-item>
             <el-button :loading="testing" @click="testConnection">测试连接</el-button>
             <span v-if="testResult" class="hint">{{ testResult }}</span>
           </el-form-item>
           <el-form-item>
-            <span class="hint">
-              配置后可在影片库页切换到 Emby 数据源：浏览指定媒体库、查看/修改条目元数据、触发重新刮削。
-              需先保存设置再测试连接。
-            </span>
+            <span class="hint">需先保存设置再测试连接</span>
           </el-form-item>
         </el-form>
       </el-card>

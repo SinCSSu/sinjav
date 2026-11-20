@@ -19,7 +19,7 @@
         <el-collapse class="advanced">
           <el-collapse-item title="高级设置">
             <div class="field">
-              <span class="field-label">后缀名（已填入全局配置，可改）</span>
+              <span class="field-label">后缀名</span>
               <el-select
                 v-model="extensions"
                 multiple
@@ -32,7 +32,7 @@
               />
             </div>
             <div class="field">
-              <span class="field-label">最小文件大小（MB，已填入全局配置，可改）</span>
+              <span class="field-label">最小文件大小（MB）</span>
               <el-input-number v-model="minFileSizeMb" :min="0" size="small" class="w-full" />
             </div>
             <div class="field">
@@ -69,7 +69,7 @@
         />
         <el-empty
           v-else-if="!previewData || previewData.items.length === 0"
-          :description="previewData ? '没有符合条件的文件' : '配置目录后点击下方「扫描」'"
+          :description="previewData ? '没有符合条件的文件' : '暂无预览'"
           :image-size="70"
         />
         <el-scrollbar v-else class="result-list">
@@ -107,7 +107,7 @@
       <!-- 右栏：详情与预览 -->
       <div class="col col-right">
         <h4 class="col-title">详情</h4>
-        <el-empty v-if="!selectedFile" description="点击左侧列表查看详情" :image-size="70" />
+        <el-empty v-if="!selectedFile" description="暂无详情" :image-size="70" />
         <template v-else>
           <div class="detail-rows">
             <div class="detail-row"><span class="k">文件名</span><span>{{ selectedFile.fileName }}</span></div>
@@ -131,7 +131,7 @@
           </div>
           <el-alert
             v-else
-            title="该格式浏览器不支持在线预览（不影响扫描与整理）"
+            title="该格式浏览器不支持在线预览"
             type="info"
             :closable="false"
           />

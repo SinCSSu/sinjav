@@ -55,7 +55,7 @@
         <!-- 详情模式 -->
         <template v-if="!compareMode">
           <h4 class="list-title">刮削信息</h4>
-          <el-empty v-if="!selected" description="点击左侧媒体查看详情" :image-size="70" />
+          <el-empty v-if="!selected" description="暂无详情" :image-size="70" />
           <el-empty v-else-if="compareLoading" description="正在并发抓取各数据源…" :image-size="70" />
           <template v-else>
             <div class="detail">
@@ -105,10 +105,6 @@
             >
               重新刮削
             </el-button>
-            <span class="cmp-hint">
-              番号识别错了可直接修改后重新刮削，保存时原记录改用新番号；
-              各字段值可直接编辑，「留空」= 不落库该字段；点「翻译」对标题/简介/类别做翻译或繁→简转换并回填，保存时按输入框当前内容落库
-            </span>
           </div>
           <el-scrollbar v-if="preview" class="cmp-scroll">
             <div class="cmp-body">
@@ -395,7 +391,7 @@ async function translateFields() {
     for (const k of ['title', 'plot', 'genres'] as const) {
       if (res[k]) vals.value[k] = res[k]!
     }
-    ElMessage.success('翻译完成，保存时按输入框当前内容落库')
+    ElMessage.success('翻译完成')
   } catch (e) {
     ElMessage.error(e instanceof Error ? e.message : String(e))
   } finally {
@@ -448,7 +444,7 @@ async function scrapeAll() {
   scrapeBusy.value = true
   try {
     const job = await api.triggerScrape({})
-    ElMessage.success(`刮削任务 #${job.jobId} 已创建（共 ${unscraped.value.length} 个待刮削，按合并规则自动落库）`)
+    ElMessage.success(`刮削任务 #${job.jobId} 已创建`)
     emit('created')
     pollUntilDone(job.jobId)
   } catch (e) {
@@ -483,7 +479,7 @@ function pollUntilDone(jobId: number) {
           type: job.status === 'completed' ? 'success' : 'warning',
           message: job.status === 'completed'
             ? `刮削任务 #${jobId} 完成`
-            : `刮削任务 #${jobId} 结束（存在失败项，可在任务页查看原因）`,
+            : `刮削任务 #${jobId} 结束（存在失败项）`,
         })
       }
     } catch {
@@ -669,10 +665,6 @@ function statusTagType(s: MovieStatus): 'warning' | 'danger' | 'success' {
 }
 .cmp-toolbar :deep(.el-button) {
   flex-shrink: 0;
-}
-.cmp-hint {
-  font-size: 12px;
-  color: var(--el-text-color-secondary);
 }
 .cmp-scroll {
   flex: 1;

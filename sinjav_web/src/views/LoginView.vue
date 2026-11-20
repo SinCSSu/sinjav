@@ -17,7 +17,6 @@
           <div class="mode-badge" :class="mode">
             <el-icon :size="20"><component :is="modeIcon" /></el-icon>
           </div>
-          <p class="eyebrow">{{ mode === 'init' ? 'FIRST SETUP' : 'WELCOME BACK' }}</p>
           <h2 class="title">{{ mode === 'init' ? '创建管理员账号' : '登录' }}</h2>
 
           <!-- 状态检查中：避免登录表单闪一下再切成初始化向导 -->
@@ -37,7 +36,7 @@
                 v-model="password"
                 type="password"
                 show-password
-                :placeholder="mode === 'init' ? '至少 6 位，建议包含字母与数字' : '请输入密码'"
+                :placeholder="mode === 'init' ? '至少 6 位' : '请输入密码'"
                 size="large"
                 :prefix-icon="Lock"
                 @keyup.enter="submit"
@@ -62,7 +61,7 @@
               />
               <div v-if="confirm" class="match-hint" :class="{ ok: password === confirm }">
                 <el-icon :size="13"><CircleCheck /></el-icon>
-                {{ password === confirm ? '两次输入一致' : '两次输入的密码不一致' }}
+                {{ password === confirm ? '一致' : '密码不一致' }}
               </div>
             </div>
 
@@ -112,7 +111,7 @@ const strength = computed(() => {
   if (/[^A-Za-z0-9]/.test(p) || p.length >= 12) score++
   return Math.max(1, Math.min(3, score))
 })
-const strengthLabel = computed(() => ['', '强度：弱', '强度：中', '强度：强'][strength.value])
+const strengthLabel = computed(() => ['', '弱', '中', '强'][strength.value])
 
 // 用户重新输入时清除行内校验提示
 watch([username, password, confirm], () => { formError.value = '' })
@@ -151,7 +150,7 @@ async function submit() {
       ? await api.authInit(username.value.trim(), password.value)
       : await api.authLogin(username.value.trim(), password.value)
     setLoggedIn(res.username)
-    ElMessage.success(mode.value === 'init' ? '账号创建成功，欢迎使用' : '登录成功')
+    ElMessage.success(mode.value === 'init' ? '账号创建成功' : '登录成功')
     const redirect = typeof route.query.redirect === 'string' ? route.query.redirect : '/dashboard'
     location.hash = `#${redirect.startsWith('/') ? redirect : `/${redirect}`}`
   } catch (e) {
@@ -283,17 +282,10 @@ async function submit() {
   box-shadow: 0 8px 18px rgba(91, 110, 225, 0.3);
 }
 .mode-badge.init { background: linear-gradient(135deg, #7b6fe0, #a98ce4); }
-.eyebrow {
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 2px;
-  color: var(--el-color-primary);
-  margin: 20px 0 6px;
-}
 .title {
   font-size: 25px;
   font-weight: 700;
-  margin: 0 0 26px;
+  margin: 20px 0 26px;
   color: var(--el-text-color-primary);
 }
 .field { margin-bottom: 18px; }
