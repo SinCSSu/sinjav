@@ -9,6 +9,9 @@
       <section class="brand-panel">
         <div class="brand-orb" />
         <div class="brand-content">
+          <div class="brand-mark">
+            <el-icon :size="28"><VideoCamera /></el-icon>
+          </div>
           <h1>sinJav</h1>
         </div>
       </section>
@@ -90,7 +93,7 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import {
   ArrowRight, CircleCheck, Key, Loading, Lock,
-  User, WarningFilled,
+  User, VideoCamera, WarningFilled,
 } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import { api } from '../api'
@@ -251,7 +254,25 @@ async function submit() {
   background: rgba(255, 255, 255, 0.1);
   animation: float 12s ease-in-out infinite alternate;
 }
-.brand-content { position: relative; z-index: 1; }
+.brand-content {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 20px;
+}
+.brand-mark {
+  width: 56px;
+  height: 56px;
+  border-radius: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.2);
+  border: 1px solid rgba(255, 255, 255, 0.38);
+  backdrop-filter: blur(8px);
+}
 .brand-content h1 {
   font-size: 44px;
   font-weight: 700;
