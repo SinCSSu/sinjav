@@ -39,9 +39,9 @@
         <span />
         <el-dropdown v-if="username" trigger="click">
           <span class="user-chip">
-            <el-icon><User /></el-icon>
+            <el-icon :size="18"><User /></el-icon>
             {{ username }}
-            <el-icon><ArrowDown /></el-icon>
+            <el-icon :size="14" class="caret"><ArrowDown /></el-icon>
           </span>
           <template #dropdown>
             <el-dropdown-menu>
@@ -108,10 +108,23 @@ async function logout() {
 .user-chip {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
   cursor: pointer;
-  font-size: 13px;
+  font-size: 15px;
+  font-weight: 600;
   color: var(--el-text-color-primary);
+  padding: 7px 14px;
+  border-radius: var(--el-border-radius-round);
+  background: var(--glass-bg-soft);
+  border: 1px solid var(--glass-border-soft);
+  transition: background 0.2s, box-shadow 0.2s;
+}
+.user-chip:hover {
+  background: var(--glass-accent);
+  box-shadow: var(--glass-shadow);
+}
+.user-chip .caret {
+  color: var(--el-text-color-secondary);
 }
 .public-main {
   padding: 0;
