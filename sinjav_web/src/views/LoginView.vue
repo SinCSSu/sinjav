@@ -258,14 +258,14 @@ async function submit() {
   position: relative;
   z-index: 1;
   display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 14px;
+  flex-direction: row;
+  align-items: center;
+  gap: 12px;
 }
 .brand-mark {
-  width: 56px;
-  height: 56px;
-  border-radius: 16px;
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -274,10 +274,11 @@ async function submit() {
   backdrop-filter: blur(8px);
 }
 .brand-content h1 {
-  font-size: 44px;
+  font-size: 28px;
   font-weight: 700;
   letter-spacing: 2px;
   margin: 0;
+  line-height: 1;
 }
 .form-panel {
   position: relative;
