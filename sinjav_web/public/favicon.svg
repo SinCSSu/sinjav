@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#8b98ec"/>
+      <stop offset="1" stop-color="#5b6ee1"/>
+    </linearGradient>
+  </defs>
+  <!-- 圆角方块：主题靛蓝渐变 -->
+  <rect x="2" y="2" width="60" height="60" rx="14" fill="url(#bg)"/>
+  <!-- 胶片齿孔元素，呼应影片库属性 -->
+  <g fill="rgba(255,255,255,0.55)">
+    <rect x="10" y="14" width="5" height="6" rx="1.5"/>
+    <rect x="10" y="24" width="5" height="6" rx="1.5"/>
+    <rect x="10" y="34" width="5" height="6" rx="1.5"/>
+    <rect x="10" y="44" width="5" height="6" rx="1.5"/>
+    <rect x="49" y="14" width="5" height="6" rx="1.5"/>
+    <rect x="49" y="24" width="5" height="6" rx="1.5"/>
+    <rect x="49" y="34" width="5" height="6" rx="1.5"/>
+    <rect x="49" y="44" width="5" height="6" rx="1.5"/>
+  </g>
+  <!-- 中心字母 S -->
+  <text x="32" y="43" text-anchor="middle" font-family="Arial, 'Microsoft YaHei', sans-serif" font-size="32" font-weight="700" fill="#ffffff">S</text>
+</svg>
