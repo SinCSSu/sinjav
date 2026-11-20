@@ -43,6 +43,32 @@ class SinJavApplicationTests {
     @Autowired
     lateinit var jdbc: org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate
 
+    private val authCookie = java.util.concurrent.atomic.AtomicReference<String>()
+
+    /** 安全改造后所有 /api/v1 需登录：每个测试前确保已初始化凭据，并给底层 RestTemplate 挂会话 Cookie 拦截器 */
+    @org.junit.jupiter.api.BeforeEach
+    fun authSetup() {
+        if (authCookie.get() != null) return
+        val status = rest.getForEntity("/api/v1/auth/status", Map::class.java).body ?: emptyMap<Any, Any>()
+        val headers = org.springframework.http.HttpHeaders().apply { contentType = org.springframework.http.MediaType.APPLICATION_JSON }
+        val creds = mapOf("username" to "admin", "password" to "secret66")
+        val resp = if (status["initialized"] == true) {
+            rest.postForEntity("/api/v1/auth/login", org.springframework.http.HttpEntity(creds, headers), String::class.java)
+        } else {
+            rest.postForEntity("/api/v1/auth/init", org.springframework.http.HttpEntity(creds, headers), String::class.java)
+        }
+        authCookie.set(
+            resp.headers[org.springframework.http.HttpHeaders.SET_COOKIE]
+                ?.joinToString("; ") { it.split(";").first() },
+        )
+        rest.restTemplate.interceptors.add(
+            org.springframework.http.client.ClientHttpRequestInterceptor { request, body, execution ->
+                authCookie.get()?.let { request.headers.add(org.springframework.http.HttpHeaders.COOKIE, it) }
+                execution.execute(request, body)
+            },
+        )
+    }
+
     private fun getMap(url: String): Map<*, *> =
         rest.getForEntity(url, Map::class.java).body ?: mapOf<String, Any>()
 

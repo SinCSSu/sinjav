@@ -52,13 +52,19 @@ class AuthService(
         save(username, password)
     }
 
-    /** 修改凭据：验证当前密码；用户名/新密码至少改一项（由控制器校验） */
+    /** 修改凭据：验证当前密码；用户名/新密码至少改一项（由控制器校验），可只改其一 */
     fun updateCredentials(currentPassword: String, username: String?, newPassword: String?) {
         val cred = load() ?: throw AuthException(409, "账号尚未初始化")
         if (!encoder.matches(currentPassword, cred.passwordHash)) {
             throw IllegalArgumentException("当前密码不正确")
         }
-        save(username ?: cred.username, newPassword ?: return)
+        val newUsername = username?.trim()?.takeIf { it.isNotBlank() } ?: cred.username
+        if (newPassword != null) {
+            save(newUsername, newPassword)
+        } else {
+            // 仅改用户名：保留原密码哈希
+            upsert(KEY_USERNAME, newUsername)
+        }
     }
 
     fun verify(username: String, password: String): Boolean {
