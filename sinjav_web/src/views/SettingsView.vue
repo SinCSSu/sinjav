@@ -100,6 +100,43 @@
       </el-card>
 
       <el-card shadow="never" class="settings-card">
+        <template #header>账号</template>
+        <el-form label-width="140px" label-position="left">
+          <el-form-item label="当前密码">
+            <el-input
+              v-model="cred.currentPassword"
+              type="password"
+              show-password
+              style="max-width: 320px"
+            />
+          </el-form-item>
+          <el-form-item label="用户名">
+            <el-input v-model="cred.username" style="max-width: 320px" />
+          </el-form-item>
+          <el-form-item label="新密码">
+            <el-input
+              v-model="cred.newPassword"
+              type="password"
+              show-password
+              placeholder="留空则不修改密码"
+              style="max-width: 320px"
+            />
+          </el-form-item>
+          <el-form-item label="确认新密码">
+            <el-input
+              v-model="cred.confirm"
+              type="password"
+              show-password
+              style="max-width: 320px"
+            />
+          </el-form-item>
+          <el-form-item label=" ">
+            <el-button type="primary" :loading="savingCred" @click="saveCredentials">保存账号</el-button>
+          </el-form-item>
+        </el-form>
+      </el-card>
+
+      <el-card shadow="never" class="settings-card">
         <template #header>整理设置</template>
         <el-form label-width="140px" label-position="left">
           <el-form-item label="命名模板">
@@ -187,6 +224,49 @@ const testResult = ref('')
 const cleaning = ref(false)
 const cleanResult = ref('')
 const original = ref<SettingsUpdate>({})
+
+// 账号管理（改用户名/密码，需验证当前密码）
+const cred = reactive({ currentPassword: '', username: '', newPassword: '', confirm: '' })
+const credUsername = ref('')
+const savingCred = ref(false)
+
+async function loadAccount() {
+  try {
+    const st = await api.authStatus()
+    credUsername.value = st.username ?? ''
+    cred.username = credUsername.value
+  } catch {
+    // 未登录由守卫处理
+  }
+}
+
+async function saveCredentials() {
+  if (!cred.currentPassword) {
+    ElMessage.warning('请输入当前密码')
+    return
+  }
+  if (cred.newPassword && cred.newPassword !== cred.confirm) {
+    ElMessage.warning('两次输入的新密码不一致')
+    return
+  }
+  savingCred.value = true
+  try {
+    const res = await api.authUpdateCredentials({
+      currentPassword: cred.currentPassword,
+      username: cred.username.trim() !== credUsername.value ? cred.username.trim() : undefined,
+      newPassword: cred.newPassword || undefined,
+    })
+    credUsername.value = res.username
+    cred.currentPassword = ''
+    cred.newPassword = ''
+    cred.confirm = ''
+    ElMessage.success('账号信息已更新')
+  } catch (e) {
+    ElMessage.error(e instanceof Error ? e.message : String(e))
+  } finally {
+    savingCred.value = false
+  }
+}
 
 const form = reactive<SettingsUpdate>({})
 
@@ -318,7 +398,10 @@ async function cleanupCache() {
   }
 }
 
-onMounted(load)
+onMounted(() => {
+  load()
+  loadAccount()
+})
 </script>
 
 <style scoped>
