@@ -82,6 +82,37 @@
           </div>
         </div>
 
+        <el-collapse v-model="organizingOpen" class="organized-collapse">
+          <el-collapse-item name="organizing">
+            <template #title>
+              <span class="group-head-text">整理中（{{ organizingTotal }}）</span>
+            </template>
+            <div v-loading="loadingOrganizing" class="card-list card-list-organized">
+              <div v-for="r in organizingRecords" :key="r.recordId" class="media-card media-card-disabled">
+                <div class="cover">
+                  <img
+                    v-if="r.coverUrl"
+                    :src="localImg(r.number || '', 'poster.jpg')"
+                    loading="lazy"
+                    alt=""
+                    @error="imgFallback($event, imgProxy(r.coverUrl))"
+                  />
+                  <div v-else class="cover-placeholder">{{ r.number || '?' }}</div>
+                </div>
+                <div class="info">
+                  <div class="num">{{ r.number || '未识别' }}</div>
+                  <div class="title" :title="r.title || r.fileName">{{ r.title || r.fileName }}</div>
+                  <div class="path">
+                    <el-tag size="small" type="warning">整理中</el-tag>
+                  </div>
+                </div>
+              </div>
+              <el-empty v-if="organizingLoaded && !organizingRecords.length" description="没有正在整理的文件" :image-size="60" />
+              <div v-if="!organizingLoaded" class="load-more">展开后加载</div>
+            </div>
+          </el-collapse-item>
+        </el-collapse>
+
         <el-collapse v-model="organizedOpen" class="organized-collapse">
           <el-collapse-item name="organized">
             <template #title>
@@ -224,6 +255,11 @@ const organizedPage = ref(0)
 const organizedLoaded = ref(false)
 const loadingOrganized = ref(false)
 const organizedOpen = ref<string[]>([])
+const organizingRecords = ref<OrganizeRecordItem[]>([])
+const organizingTotal = ref(0)
+const organizingLoaded = ref(false)
+const loadingOrganizing = ref(false)
+const organizingOpen = ref<string[]>([])
 const selected = ref(new Set<number>())
 
 // 右列：预览
@@ -248,7 +284,10 @@ async function onOpen() {
   previews.value = []
   pendingRecords.value = []
   organizedRecords.value = []
+  organizingRecords.value = []
   organizedTotal.value = 0
+  organizingTotal.value = 0
+  organizingLoaded.value = false
   organizedPage.value = 0
   pendingPage.value = 0
   organizedLoaded.value = false
@@ -312,6 +351,25 @@ async function loadOrganized(reset: boolean) {
     loadingOrganized.value = false
   }
 }
+
+async function loadOrganizing(reset: boolean) {
+  loadingOrganizing.value = true
+  try {
+    const p = await api.listOrganizeRecords('organizing', 1, PAGE_SIZE)
+    if (reset) organizingRecords.value = p.items
+    organizingTotal.value = p.total
+    organizingLoaded.value = true
+  } catch (e) {
+    ElMessage.error(e instanceof Error ? e.message : String(e))
+  } finally {
+    loadingOrganizing.value = false
+  }
+}
+
+// 整理中默认折叠，首次展开时才加载
+watch(organizingOpen, (v) => {
+  if (v.includes('organizing') && !organizingLoaded.value) loadOrganizing(true)
+})
 
 // 已整理默认折叠，首次展开时才加载
 watch(organizedOpen, (v) => {
@@ -396,7 +454,12 @@ function validateReorganize(ids: number[], previewMap: Map<number, OrganizePrevi
   return null
 }
 
-async function submitOrganize(body: Parameters<typeof api.triggerOrganize>[0], reorganizeCount: number) {
+async function submitOrganize(
+  body: Parameters<typeof api.triggerOrganize>[0],
+  reorganizeCount: number,
+  /** 整理选中：保持弹窗打开并刷新列表，方便连续整理下一条 */
+  keepOpen = false,
+) {
   submitting.value = true
   try {
     if (reorganizeCount > 0) {
@@ -407,9 +470,22 @@ async function submitOrganize(body: Parameters<typeof api.triggerOrganize>[0], r
       )
     }
     const job = await api.triggerOrganize(body)
-    ElMessage.success(`整理任务 #${job.jobId} 已创建`)
-    visible.value = false
-    emit('created')
+    if (keepOpen) {
+      ElMessage.success(`整理任务 #${job.jobId} 已创建，可继续选择下一条`)
+      // 已整理/待整理状态由后端异步更新，稍等后刷新列表并清空选择与预览
+      selected.value = new Set()
+      previews.value = []
+      setTimeout(() => {
+        loadPending(true)
+        loadOrganizing(true)
+        loadOrganized(true)
+        organizingOpen.value = ['organizing']
+      }, 800)
+    } else {
+      ElMessage.success(`整理任务 #${job.jobId} 已创建`)
+      visible.value = false
+      emit('created')
+    }
   } catch (e) {
     if (e !== 'cancel' && e !== 'close') {
       ElMessage.error(e instanceof Error ? e.message : String(e))
@@ -437,7 +513,7 @@ async function organizeSelected() {
     return { recordId: id }
   })
   const reorganizeCount = ids.filter((id) => recordMap.value.get(id)?.organizeStatus === 'organized').length
-  await submitOrganize({ ...currentParams(), items }, reorganizeCount)
+  await submitOrganize({ ...currentParams(), items }, reorganizeCount, true)
 }
 
 async function organizeAll() {

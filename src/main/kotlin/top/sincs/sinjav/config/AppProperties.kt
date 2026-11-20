@@ -29,6 +29,8 @@ data class ScraperProps(
     var deeplApiKey: String = "",
     var baiduTranslateAppId: String = "",
     var baiduTranslateSecret: String = "",
+    // 自动翻译：批量刮削时翻译标题/简介/类别标签；关闭则直接落源站内容
+    var autoTranslate: Boolean = true,
 )
 
 data class OrganizeProps(

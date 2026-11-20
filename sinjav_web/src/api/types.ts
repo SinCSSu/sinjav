@@ -22,7 +22,7 @@ export interface CredentialsUpdate {
 }
 export type MovieStatus = 'pending' | 'scraped' | 'failed'
 export type RecognizeStatus = 'recognized' | 'unrecognized' | 'filtered'
-export type OrganizeStatus = 'pending' | 'organized' | 'failed' | 'skipped'
+export type OrganizeStatus = 'pending' | 'organizing' | 'organized' | 'failed' | 'skipped'
 export type LinkMode = 'hardlink' | 'symlink' | 'move' | 'copy'
 export type ConflictPolicy = 'skip' | 'overwrite' | 'rename'
 export type ScraperSource = 'javbus' | 'javdb' | 'missav'
@@ -310,6 +310,8 @@ export type SettingsUpdate = {
   downloadImages?: boolean
   /** 翻译 API：DeepL > 百度 > Google 兜底 */
   deeplApiKey?: string
+  /** 自动翻译：批量刮削时翻译标题/简介/类别标签；关闭则直接落源站内容 */
+  autoTranslate?: boolean
   baiduTranslateAppId?: string
   baiduTranslateSecret?: string
   /** Emby 集成：服务地址 + API Key + 独立代理（留空直连） */

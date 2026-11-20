@@ -23,6 +23,7 @@ class JobService(
     private val runner: JobRunner,
     private val scanService: ScanService,
     private val scrapeService: ScrapeService,
+    private val jobControl: JobControl,
     private val objectMapper: ObjectMapper,
 ) {
 
@@ -41,6 +42,17 @@ class JobService(
     fun triggerPipeline(params: PipelineParams): Job {
         if (params.scan?.sourceDirs.isNullOrEmpty()) throw IllegalArgumentException("pipeline 需提供 scan.sourceDirs")
         return createAndDispatch("pipeline", params) { id, p -> runner.runPipeline(id, p) }
+    }
+
+    /**
+     * 停止运行中的任务（协作式取消）：执行侧在处理间隙检查标记，命中即落库 cancelled。
+     * 当前正在执行的条目会执行完，不会中途强杀线程。
+     */
+    fun stop(jobId: Long): Job {
+        val job = jobs.findById(jobId) ?: throw NoSuchElementException("任务不存在: $jobId")
+        if (job.status != "running") throw IllegalStateException("任务 #${job.id} 不在运行中，无法停止")
+        jobControl.requestStop(jobId)
+        return job
     }
 
     private inline fun <T> createAndDispatch(type: String, params: T, dispatch: (Long, T) -> Unit): Job {

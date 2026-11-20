@@ -169,7 +169,9 @@ class Organizer(
         val record = fileRecords.findById(item.recordId)
             ?: return OrganizeResult(false, message = "文件记录不存在: ${item.recordId}")
         var rec = record
-        if (rec.organizeStatus == "organized") {
+        // 整理任务开始时会先把记录标记为 organizing（保留原 targetPath/linkMode），
+        // 判断"之前已整理过"要看是否留有整理结果，而非状态字面值
+        if (rec.organizeStatus == "organized" || (rec.organizeStatus == "organizing" && rec.targetPath != null)) {
             val effectiveMode = item.mode ?: requiredMode(params)
             when (rec.linkMode) {
                 "move" -> {

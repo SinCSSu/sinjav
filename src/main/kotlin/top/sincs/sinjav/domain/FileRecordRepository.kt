@@ -76,7 +76,11 @@ class FileRecordRepository(private val jdbc: NamedParameterJdbcTemplate) {
 
     /** 按整理状态分组列出文件记录（已联出影片标题/封面），keyword 模糊匹配番号/文件名/标题 */
     fun listForOrganize(page: Int, size: Int, group: String, keyword: String?): Pair<List<OrganizeRecordRow>, Long> {
-        val organizeStatus = if (group == "organized") "organized" else "pending"
+        val organizeStatus = when (group) {
+            "organized" -> "organized"
+            "organizing" -> "organizing"
+            else -> "pending"
+        }
         val conditions = mutableListOf("fr.recognize_status = 'recognized'", "fr.organize_status = :os")
         val params = mutableMapOf<String, Any>("os" to organizeStatus)
         if (!keyword.isNullOrBlank()) {
@@ -165,6 +169,26 @@ class FileRecordRepository(private val jdbc: NamedParameterJdbcTemplate) {
             WHERE id = :id
             """,
             mapOf("tp" to targetPath, "lm" to linkMode, "os" to status, "err" to error, "id" to id),
+        )
+    }
+
+    /** 整理任务开始时批量标记为「整理中」（保留原 targetPath/linkMode 供重整判断） */
+    fun markOrganizing(ids: Collection<Long>) {
+        if (ids.isEmpty()) return
+        jdbc.update(
+            "UPDATE file_records SET organize_status = 'organizing', updated_at = CURRENT_TIMESTAMP " +
+                "WHERE id IN (:ids)",
+            mapOf("ids" to ids.toList()),
+        )
+    }
+
+    /** 任务结束后把该任务标记但尚未落到最终状态的「整理中」记录复位为待整理（异常中断兜底） */
+    fun resetOrganizingToPending(ids: Collection<Long>) {
+        if (ids.isEmpty()) return
+        jdbc.update(
+            "UPDATE file_records SET organize_status = 'pending', updated_at = CURRENT_TIMESTAMP " +
+                "WHERE organize_status = 'organizing' AND id IN (:ids)",
+            mapOf("ids" to ids.toList()),
         )
     }
 

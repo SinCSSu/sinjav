@@ -154,6 +154,8 @@ data class SettingsUpdate(
     val deeplApiKey: String? = null,
     val baiduTranslateAppId: String? = null,
     val baiduTranslateSecret: String? = null,
+    /** 自动翻译：批量刮削时翻译标题/简介/类别标签；关闭则直接落源站内容 */
+    val autoTranslate: Boolean? = null,
     // Emby 集成
     val embyBaseUrl: String? = null,
     val embyApiKey: String? = null,
@@ -263,6 +265,8 @@ data class SettingsDto(
     val namingTemplate: String, val conflictPolicy: String,
     val generateNfo: Boolean, val downloadImages: Boolean,
     val deeplApiKey: String, val baiduTranslateAppId: String, val baiduTranslateSecret: String,
+    /** 自动翻译：批量刮削时翻译标题/简介/类别标签；关闭则直接落源站内容 */
+    val autoTranslate: Boolean,
     val embyBaseUrl: String, val embyApiKey: String,
     val embyProxyHost: String, val embyProxyPort: Int,
     val videoExtensions: String, val minFileSizeMb: Long,
@@ -284,6 +288,7 @@ data class SettingsDto(
             deeplApiKey = props.scraper.deeplApiKey,
             baiduTranslateAppId = props.scraper.baiduTranslateAppId,
             baiduTranslateSecret = props.scraper.baiduTranslateSecret,
+            autoTranslate = props.scraper.autoTranslate,
             embyBaseUrl = props.emby.baseUrl, embyApiKey = props.emby.apiKey,
             embyProxyHost = props.emby.proxyHost, embyProxyPort = props.emby.proxyPort,
             videoExtensions = props.scan.videoExtensions, minFileSizeMb = props.scan.minFileSizeMb,

@@ -24,6 +24,7 @@ class ScanService(
     private val movies: MovieRepository,
     private val jobs: JobRepository,
     private val props: AppProperties,
+    private val jobControl: top.sincs.sinjav.job.JobControl,
 ) {
 
     private val log = LoggerFactory.getLogger(ScanService::class.java)
@@ -67,6 +68,7 @@ class ScanService(
         var unrecognizedCount = 0
         var skippedCount = 0
         files.forEach { f ->
+            if (jobControl.isCancelled(jobId)) throw top.sincs.sinjav.job.JobCancelledException()
             try {
                 val record = fileRecords.upsertOnScan(f.sourcePath, f.fileName, f.fileSize, f.fileMtime)
                 // 指纹未变且已识别过 → 跳过（增量）

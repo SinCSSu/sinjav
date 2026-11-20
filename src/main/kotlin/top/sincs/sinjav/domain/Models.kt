@@ -13,7 +13,7 @@ data class FileRecord(
     val recognizeStatus: String, // recognized | unrecognized | filtered
     val targetPath: String?,
     val linkMode: String?,
-    val organizeStatus: String, // pending | organized | failed | skipped
+    val organizeStatus: String, // pending | organizing | organized | failed | skipped
     val organizeError: String?,
     val createdAt: Instant,
 )

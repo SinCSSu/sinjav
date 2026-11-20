@@ -57,9 +57,22 @@
       <el-table-column label="耗时" width="100">
         <template #default="{ row }">{{ formatDuration(row.startedAt, row.finishedAt) }}</template>
       </el-table-column>
-      <el-table-column label="操作" width="80" align="center">
+      <el-table-column label="操作" width="150" align="center">
         <template #default="{ row }">
-          <el-button link type="primary" size="small" @click="openDetail(row)">详情</el-button>
+          <el-button type="primary" plain size="small" class="op-btn" @click="openDetail(row)">
+            详情
+          </el-button>
+          <el-button
+            v-if="row.status === 'running'"
+            type="danger"
+            plain
+            size="small"
+            class="op-btn"
+            :loading="stoppingId === row.id"
+            @click="stop(row)"
+          >
+            停止
+          </el-button>
         </template>
       </el-table-column>
     </el-table>
@@ -110,6 +123,7 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { Search as SearchIcon } from '@element-plus/icons-vue'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { api } from '../api'
 import type { Job, JobStatus, JobType } from '../api/types'
 import {
@@ -129,6 +143,7 @@ const items = ref<Job[]>([])
 
 const detailVisible = ref(false)
 const detail = ref<Job | null>(null)
+const stoppingId = ref<number | null>(null)
 
 const polling = computed(() => items.value.some((j) => j.status === 'running'))
 
@@ -162,6 +177,29 @@ function openDetail(job: Job) {
   detailVisible.value = true
 }
 
+/** 停止运行中的任务（协作式取消：当前条目执行完后终止） */
+async function stop(job: Job) {
+  try {
+    await ElMessageBox.confirm(
+      `停止任务 #${job.id}？正在执行的条目会执行完，后续条目不再处理。`,
+      '停止任务',
+      { type: 'warning', confirmButtonText: '停止', cancelButtonText: '取消' },
+    )
+  } catch {
+    return
+  }
+  stoppingId.value = job.id
+  try {
+    await api.stopJob(job.id)
+    ElMessage.success(`已发送停止请求，任务 #${job.id} 将在当前条目完成后终止`)
+    load()
+  } catch (e) {
+    ElMessage.error(e instanceof Error ? e.message : String(e))
+  } finally {
+    stoppingId.value = null
+  }
+}
+
 let timer: number | undefined
 
 onMounted(() => {
@@ -179,6 +217,20 @@ onUnmounted(() => {
 <style scoped>
 .poll-hint {
   margin-left: 8px;
+}
+/* 操作栏按钮：plain 样式保证文字与底色有足够对比度（原 link 样式在玻璃主题下文字与底色几乎同色） */
+.op-btn.el-button--primary {
+  color: var(--el-color-primary);
+  background: var(--el-color-primary-light-9, rgba(91, 110, 225, 0.12));
+  border-color: var(--el-color-primary-light-5, rgba(91, 110, 225, 0.4));
+}
+.op-btn.el-button--danger {
+  color: var(--el-color-danger);
+  background: var(--el-color-danger-light-9, rgba(217, 72, 72, 0.12));
+  border-color: var(--el-color-danger-light-5, rgba(217, 72, 72, 0.4));
+}
+.op-btn:hover {
+  opacity: 0.85;
 }
 .fail {
   color: var(--el-color-danger);

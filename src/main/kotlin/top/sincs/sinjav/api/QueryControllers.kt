@@ -131,6 +131,7 @@ class FileRecordController(private val fileRecords: FileRecordRepository) {
 class JobController(
     private val jobs: JobRepository,
     private val objectMapper: ObjectMapper,
+    private val jobService: top.sincs.sinjav.job.JobService,
 ) {
 
     @GetMapping("/jobs")
@@ -150,6 +151,14 @@ class JobController(
 
     @GetMapping("/jobs/{jobId}")
     fun detail(@PathVariable jobId: Long): JobDto {
+        val job = jobs.findById(jobId) ?: throw NoSuchElementException("任务不存在: $jobId")
+        return JobDto.of(job, objectMapper)
+    }
+
+    /** 停止运行中的任务（协作式取消，正在执行的条目会完成） */
+    @PostMapping("/jobs/{jobId}/stop")
+    fun stop(@PathVariable jobId: Long): JobDto {
+        jobService.stop(jobId)
         val job = jobs.findById(jobId) ?: throw NoSuchElementException("任务不存在: $jobId")
         return JobDto.of(job, objectMapper)
     }

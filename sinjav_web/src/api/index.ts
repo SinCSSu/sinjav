@@ -190,8 +190,8 @@ export const api = {
   previewOrganize(body: OrganizePreviewRequest) {
     return post<OrganizePreviewResponse>('/organize/preview', body)
   },
-  /** 整理弹窗文件记录列表（group: pending | organized） */
-  listOrganizeRecords(group: 'pending' | 'organized', page = 1, size = 100, keyword?: string) {
+  /** 整理弹窗文件记录列表（group: pending | organizing | organized） */
+  listOrganizeRecords(group: 'pending' | 'organizing' | 'organized', page = 1, size = 100, keyword?: string) {
     return request<Paged<OrganizeRecordItem>>(
       `/organize/records${qs({ group, page, size, keyword })}`,
     )
@@ -264,6 +264,10 @@ export const api = {
   },
   getJob(jobId: number) {
     return request<Job>(`/jobs/${jobId}`)
+  },
+  /** 停止运行中的任务（协作式取消，正在执行的条目会完成） */
+  stopJob(jobId: number) {
+    return post<Job>(`/jobs/${jobId}/stop`, {})
   },
 
   // 设置

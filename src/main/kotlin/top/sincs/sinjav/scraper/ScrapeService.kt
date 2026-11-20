@@ -23,6 +23,7 @@ class ScrapeService(
     private val imageStore: ImageStore,
     private val translation: TranslationService,
     private val props: AppProperties,
+    private val jobControl: top.sincs.sinjav.job.JobControl,
 ) {
 
     private val log = LoggerFactory.getLogger(ScrapeService::class.java)
@@ -53,20 +54,27 @@ class ScrapeService(
             numbers.map { number ->
                 executor.submit {
                     try {
+                        // 任务被用户停止：未开始的影片直接跳过（进行中的刮削会执行完）
+                        if (jobControl.isCancelled(jobId)) return@submit
                         val (source, meta) = chain.scrapeWithSource(number)
 
-                        // 标题翻译成中文（失败回退原文）
+                        val autoTranslate = props.scraper.autoTranslate
+                        // 标题翻译成中文（失败回退原文）；自动翻译关闭时直接用源站标题
                         val titleOrig = meta.title
                         // 翻译失败时回退源站中文标题（javdb origin-title / missav h1，繁体）→ 统一繁转简
-                        val titleZh = meta.title?.let { translation.translateToZh(it) }
-                            ?: meta.titleZh?.takeIf { it.isNotBlank() }?.let { translation.toSimplified(it) }
+                        val titleZh = if (autoTranslate) {
+                            meta.title?.let { translation.translateToZh(it) }
+                                ?: meta.titleZh?.takeIf { it.isNotBlank() }?.let { translation.toSimplified(it) }
+                        } else null
                         // 简介仅保留简体中文结果：翻译/繁简转换成功只留译文，翻译失败保留原文
-                        val plot = meta.plot?.let { p -> translation.translateToZh(p) ?: p }
+                        val plot = if (autoTranslate) {
+                            meta.plot?.let { p -> translation.translateToZh(p) ?: p }
+                        } else meta.plot
                         // 类别标签翻译成简体中文（词表重复度高，走缓存；失败保留原文）
                         // 画质/尺寸类标签（高清、4K、1080P 等）无内容价值，翻译前后都过滤
                         val genres = meta.genres
                             .filter { !qualityTagRegex.containsMatchIn(it) }
-                            .map { translation.translateLabel(it) }
+                            .map { if (autoTranslate) translation.translateLabel(it) else it }
                             .filter { it.isNotBlank() && !qualityTagRegex.containsMatchIn(it) }
                             .distinct()
 
@@ -101,6 +109,7 @@ class ScrapeService(
         } finally {
             executor.shutdown()
         }
+        if (jobControl.isCancelled(jobId)) throw top.sincs.sinjav.job.JobCancelledException()
         log.info("刮削完成 jobId={} 成功={} 失败={}", jobId, done.get() - failed.get(), failed.get())
         jobs.finish(jobId, "completed")
     }

@@ -25,6 +25,7 @@ class JobRunner(
     private val organizer: Organizer,
     private val fileRecords: FileRecordRepository,
     private val emby: EmbyClient,
+    private val jobControl: JobControl,
 ) {
 
     private val log = LoggerFactory.getLogger(JobRunner::class.java)
@@ -70,60 +71,78 @@ class JobRunner(
             params.targetDir ?: "<未指定>", params.mode ?: "<未指定>",
             params.namingTemplate ?: "<全局设置>", params.conflictPolicy ?: "<全局设置>",
         )
-        if (!params.items.isNullOrEmpty()) {
-            // 按文件记录逐条整理（支持覆盖目标路径/整理方式与已整理记录重整）
-            jobs.setTotalItems(jobId, params.items.size)
+        // 任务涉及的记录先标记为「整理中」，逐条处理完成后再落到最终状态；
+        // finally 兜底复位（异常中断时避免记录永久卡在「整理中」）
+        var marked: List<Long> = emptyList()
+        try {
+            if (!params.items.isNullOrEmpty()) {
+                // 按文件记录逐条整理（支持覆盖目标路径/整理方式与已整理记录重整）
+                marked = params.items.map { it.recordId }
+                fileRecords.markOrganizing(marked)
+                jobs.setTotalItems(jobId, params.items.size)
+                var done = 0
+                var failed = 0
+                params.items.forEach { item ->
+                    if (jobControl.isCancelled(jobId)) throw JobCancelledException()
+                    val result = organizer.executeItem(item, params)
+                    if (!result.ok && !result.skipped) {
+                        failed++
+                        jobs.appendError(jobId, "记录#${item.recordId}", result.message ?: "unknown")
+                    }
+                    done++
+                    jobs.updateProgress(jobId, done, failed)
+                }
+                log.info("整理完成 jobId={} 共 {} 条记录，失败 {}", jobId, params.items.size, failed)
+                return
+            }
+            val records = if (!params.numbers.isNullOrEmpty()) {
+                params.numbers.flatMap { fileRecords.findByNumber(it) }
+            } else {
+                val all = mutableListOf<top.sincs.sinjav.domain.FileRecord>()
+                var page = 1
+                while (true) {
+                    val p = fileRecords.list(page, 200, null, null, "pending")
+                    if (p.items.isEmpty()) break
+                    all += p.items
+                    if (all.size >= p.total) break
+                    page++
+                }
+                all
+            }
+            val filtered = records.filter { it.recognizeStatus == "recognized" && it.organizeStatus == "pending" }
+            marked = filtered.map { it.id }
+            fileRecords.markOrganizing(marked)
+            jobs.setTotalItems(jobId, filtered.size)
             var done = 0
             var failed = 0
-            params.items.forEach { item ->
-                val result = organizer.executeItem(item, params)
+            filtered.forEach { record ->
+                if (jobControl.isCancelled(jobId)) throw JobCancelledException()
+                val result = organizer.executeOne(record, params)
                 if (!result.ok && !result.skipped) {
                     failed++
-                    jobs.appendError(jobId, "记录#${item.recordId}", result.message ?: "unknown")
+                    jobs.appendError(jobId, record.sourcePath, result.message ?: "unknown")
                 }
                 done++
                 jobs.updateProgress(jobId, done, failed)
             }
-            log.info("整理完成 jobId={} 共 {} 条记录，失败 {}", jobId, params.items.size, failed)
-            return
+            log.info("整理完成 jobId={} 共 {} 个文件，失败 {}", jobId, filtered.size, failed)
+        } finally {
+            fileRecords.resetOrganizingToPending(marked)
         }
-        val records = if (!params.numbers.isNullOrEmpty()) {
-            params.numbers.flatMap { fileRecords.findByNumber(it) }
-        } else {
-            val all = mutableListOf<top.sincs.sinjav.domain.FileRecord>()
-            var page = 1
-            while (true) {
-                val p = fileRecords.list(page, 200, null, null, "pending")
-                if (p.items.isEmpty()) break
-                all += p.items
-                if (all.size >= p.total) break
-                page++
-            }
-            all
-        }
-        val filtered = records.filter { it.recognizeStatus == "recognized" && it.organizeStatus == "pending" }
-        jobs.setTotalItems(jobId, filtered.size)
-        var done = 0
-        var failed = 0
-        filtered.forEach { record ->
-            val result = organizer.executeOne(record, params)
-            if (!result.ok && !result.skipped) {
-                failed++
-                jobs.appendError(jobId, record.sourcePath, result.message ?: "unknown")
-            }
-            done++
-            jobs.updateProgress(jobId, done, failed)
-        }
-        log.info("整理完成 jobId={} 共 {} 个文件，失败 {}", jobId, filtered.size, failed)
     }
 
     private inline fun wrap(jobId: Long, body: () -> Unit) {
         try {
             body()
+        } catch (e: JobCancelledException) {
+            log.info("任务 {} 已被用户停止", jobId)
+            jobs.finish(jobId, "cancelled")
         } catch (e: Exception) {
             log.error("任务 {} 执行异常", jobId, e)
             jobs.appendError(jobId, "job", e.message ?: "unknown")
             jobs.finish(jobId, "failed")
+        } finally {
+            jobControl.clear(jobId)
         }
     }
 }

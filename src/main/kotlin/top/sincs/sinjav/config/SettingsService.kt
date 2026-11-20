@@ -49,6 +49,7 @@ class SettingsService(
             u.deeplApiKey?.let { add("deeplApiKey" to it) }
             u.baiduTranslateAppId?.let { add("baiduTranslateAppId" to it) }
             u.baiduTranslateSecret?.let { add("baiduTranslateSecret" to it) }
+            u.autoTranslate?.let { add("autoTranslate" to it.toString()) }
             u.embyBaseUrl?.let { add("embyBaseUrl" to it) }
             u.embyApiKey?.let { add("embyApiKey" to it) }
             u.embyProxyHost?.let { add("embyProxyHost" to it) }
@@ -93,6 +94,7 @@ class SettingsService(
             "deeplApiKey" -> props.scraper.deeplApiKey = value
             "baiduTranslateAppId" -> props.scraper.baiduTranslateAppId = value
             "baiduTranslateSecret" -> props.scraper.baiduTranslateSecret = value
+            "autoTranslate" -> props.scraper.autoTranslate = value.toBooleanStrictOrNull() ?: true
             "embyBaseUrl" -> props.emby.baseUrl = value
             "embyApiKey" -> props.emby.apiKey = value
             "embyProxyHost" -> props.emby.proxyHost = value

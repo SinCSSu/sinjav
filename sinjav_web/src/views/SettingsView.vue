@@ -63,6 +63,10 @@
             <el-input-number v-model="form.cfTimeoutMs" :min="1000" :max="600000" :step="5000" />
           </el-form-item>
           <el-divider content-position="left">翻译设置</el-divider>
+          <el-form-item label="自动翻译">
+            <el-switch v-model="form.autoTranslate" />
+            <span class="hint">开启后批量刮削时翻译标题/简介/类别标签；关闭则直接落源站内容</span>
+          </el-form-item>
           <el-form-item label="DeepL API Key">
             <el-input
               v-model="form.deeplApiKey"
