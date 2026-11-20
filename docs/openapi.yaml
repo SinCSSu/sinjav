@@ -657,6 +657,100 @@ paths:
         '502':
           description: 源站拉取失败
 
+  # ---------- 认证 ----------
+  # 除 /api/v1/auth/** 与 /local-images/** 外，所有 /api/v1/** 均需登录会话（SINJAV_SESSION Cookie，
+  # 30 天 TTL、每次登录续期）；未登录返回 401 ProblemDetail {"title":"Unauthorized","detail":"未登录或会话已过期"}。
+
+  /api/v1/auth/status:
+    get:
+      tags: [auth]
+      operationId: authStatus
+      summary: 认证状态（是否已初始化 / 是否已登录）
+      responses:
+        '200':
+          description: 状态
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthStatus'
+
+  /api/v1/auth/init:
+    post:
+      tags: [auth]
+      operationId: authInit
+      summary: 首次初始化管理员账号（仅库中无凭据时可用，先到先得）
+      description: 成功后自动登录（建立会话）。重复初始化返回 409；密码少于 6 位返回 400。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AuthInitRequest'
+      responses:
+        '200':
+          description: 初始化完成并已登录
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoginResult'
+        '409':
+          $ref: '#/components/responses/ValidationError'
+
+  /api/v1/auth/login:
+    post:
+      tags: [auth]
+      operationId: authLogin
+      summary: 登录（建立 30 天会话，每次登录续期）
+      description: 连续失败 5 次触发全局锁定 15 分钟（429）；用户名或密码错误返回 401。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AuthLoginRequest'
+      responses:
+        '200':
+          description: 登录成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoginResult'
+        '401':
+          description: 用户名或密码错误
+        '429':
+          description: 失败次数过多，账号临时锁定
+
+  /api/v1/auth/logout:
+    post:
+      tags: [auth]
+      operationId: authLogout
+      summary: 退出登录（销毁会话）
+      responses:
+        '204':
+          description: 已退出
+
+  /api/v1/auth/credentials:
+    put:
+      tags: [auth]
+      operationId: authUpdateCredentials
+      summary: 修改用户名/密码（需登录并验证当前密码）
+      description: 用户名与新密码至少填一项，可只改其一；当前密码错误返回 400。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AuthCredentialsRequest'
+      responses:
+        '200':
+          description: 更新成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoginResult'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+
   /api/v1/settings:
     get:
       tags: [settings]
@@ -1142,6 +1236,65 @@ components:
           additionalProperties:
             $ref: '#/components/schemas/ScrapeFieldChoice'
       required: [number]
+
+    # ---------- 认证 ----------
+    AuthStatus:
+      type: object
+      description: 认证状态
+      properties:
+        initialized:
+          type: boolean
+          description: 是否已初始化管理员账号
+        username:
+          type: string
+          nullable: true
+        authenticated:
+          type: boolean
+          description: 当前请求是否持有有效登录会话
+
+    AuthInitRequest:
+      type: object
+      required: [username, password]
+      properties:
+        username:
+          type: string
+          maxLength: 64
+        password:
+          type: string
+          minLength: 6
+          maxLength: 128
+
+    AuthLoginRequest:
+      type: object
+      required: [username, password]
+      properties:
+        username:
+          type: string
+        password:
+          type: string
+
+    AuthCredentialsRequest:
+      type: object
+      required: [currentPassword]
+      description: 用户名与新密码至少填一项
+      properties:
+        currentPassword:
+          type: string
+        username:
+          type: string
+          nullable: true
+          maxLength: 64
+        newPassword:
+          type: string
+          nullable: true
+          minLength: 6
+          maxLength: 128
+
+    LoginResult:
+      type: object
+      properties:
+        username:
+          type: string
 
     ScrapeTranslateRequest:
       type: object
