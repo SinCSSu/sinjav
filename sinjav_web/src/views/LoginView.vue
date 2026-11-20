@@ -5,15 +5,9 @@
     <div class="ambient-ring" />
 
     <div class="auth-shell">
-      <!-- 品牌侧：桌面端展示，移动端隐藏 -->
+      <!-- 品牌侧：纯装饰渐变栏，桌面端展示，移动端隐藏 -->
       <section class="brand-panel">
         <div class="brand-orb" />
-        <div class="brand-content">
-          <div class="brand-mark">
-            <el-icon :size="28"><VideoCamera /></el-icon>
-          </div>
-          <h1>sinJav</h1>
-        </div>
       </section>
 
       <!-- 表单侧 -->
@@ -93,7 +87,7 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import {
   ArrowRight, CircleCheck, Key, Loading, Lock,
-  User, VideoCamera, WarningFilled,
+  User, WarningFilled,
 } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import { api } from '../api'
@@ -213,7 +207,8 @@ async function submit() {
   position: relative;
   z-index: 1;
   display: grid;
-  grid-template-columns: 380px 400px;
+  grid-template-columns: 220px 400px;
+  min-height: 560px;
   border-radius: 24px;
   overflow: hidden;
   border: 1px solid var(--glass-border);
@@ -254,38 +249,12 @@ async function submit() {
   background: rgba(255, 255, 255, 0.1);
   animation: float 12s ease-in-out infinite alternate;
 }
-.brand-content {
-  position: relative;
-  z-index: 1;
-  display: flex;
-  flex-direction: row;
-  align-items: center;
-  gap: 12px;
-}
-.brand-mark {
-  width: 40px;
-  height: 40px;
-  border-radius: 12px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: rgba(255, 255, 255, 0.2);
-  border: 1px solid rgba(255, 255, 255, 0.38);
-  backdrop-filter: blur(8px);
-}
-.brand-content h1 {
-  font-size: 28px;
-  font-weight: 700;
-  letter-spacing: 2px;
-  margin: 0;
-  line-height: 1;
-}
 .form-panel {
   position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 40px 36px 28px;
+  padding: 48px 36px;
   background: rgba(255, 255, 255, 0.52);
 }
 .auth-card { position: relative; width: 100%; }
@@ -384,6 +353,7 @@ async function submit() {
 .submit {
   width: 100%;
   height: 46px;
+  margin-top: 20px;
   border: none;
   border-radius: 12px;
   font-size: 14px;
