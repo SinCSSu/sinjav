@@ -256,6 +256,20 @@ export interface ScrapeApplyRequest {
   fields: Record<string, ScrapeFieldChoice>
 }
 
+/** 对比界面手动翻译请求：仅传需要翻译的字段（省略/空白不处理） */
+export interface ScrapeTranslateRequest {
+  title?: string
+  plot?: string
+  genres?: string
+}
+
+/** 手动翻译结果：与请求字段一一对应（翻译失败回退原文；类别以「 / 」重新拼接） */
+export interface ScrapeTranslateResponse {
+  title?: string | null
+  plot?: string | null
+  genres?: string | null
+}
+
 export type SettingsUpdate = {
   sourceOrder?: string
   userAgent?: string

@@ -249,8 +249,8 @@ paths:
       operationId: scrapeApply
       summary: 多源对比刮削落库（单番号，同步）
       description: |
-        按逐字段的来源选择（各来源 id / 留空 / manual 手动输入）组装元数据，
-        标题与简介按常规刮削规则翻译（manual 值视为最终文本不翻译），
+        按逐字段的来源选择（各来源 id / 留空 / manual 手动输入）与输入框当前内容组装元数据，
+        不自动翻译（标题/简介/类别的翻译或繁→简转换由前端调用 /scrape/translate 预先回填），
         写库并把影片置为 scraped，同步下载封面/剧照。
       requestBody:
         required: true
@@ -268,6 +268,31 @@ paths:
                 properties:
                   number: { type: string }
                   status: { type: string, enum: [scraped] }
+        '400':
+          $ref: '#/components/responses/ValidationError'
+
+  /api/v1/scrape/translate:
+    post:
+      tags: [scrape]
+      operationId: scrapeTranslate
+      summary: 对比界面手动翻译（同步，不落库）
+      description: |
+        对标题/简介做翻译或繁→简转换（已是中文则仅繁→简；翻译失败回退原文），
+        类别逐个翻译后以「 / 」重新拼接。仅处理请求中携带的非空白字段，其余返回 null。
+        返回的译文由前端回填输入框，之后调用 /scrape/apply 按输入框内容落库。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ScrapeTranslateRequest'
+      responses:
+        '200':
+          description: 翻译完成，字段与请求一一对应
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ScrapeTranslateResponse'
         '400':
           $ref: '#/components/responses/ValidationError'
 
@@ -800,11 +825,12 @@ paths:
     post:
       tags: [emby]
       operationId: applyEmbyRescrape
-      summary: 重新刮削应用（本地管线）：按逐字段来源选择组装元数据并回写 Emby（同步）
+      summary: 重新刮削应用（本地管线）：按逐字段来源选择与输入框当前内容组装元数据并回写 Emby（同步）
       description: |
-        fields 与 /scrape/apply 同结构：来源 id 选择时 value 为该源原文；manual 值视为最终文本不翻译；
-        留空（null/缺省）的字段不回写。标题翻译为名称、原文存原标题；简介译中文；
-        厂商/厂牌→工作室；女优/系列/导演/厂牌→标签；类别过滤画质标签并译名。
+        fields 与 /scrape/apply 同结构：来源 id 选择时 value 为输入框当前内容（不自动翻译，
+        翻译由前端调用 /scrape/translate 预先回填）；留空（null/缺省）的字段不回写。
+        标题统一为「番号-标题」、原文存原标题；简介→概述；
+        厂商/厂牌→工作室；女优/系列/导演/厂牌→标签；类别过滤画质标签。
       parameters:
         - { name: id, in: path, required: true, schema: { type: string } }
       requestBody:
@@ -1116,6 +1142,37 @@ components:
           additionalProperties:
             $ref: '#/components/schemas/ScrapeFieldChoice'
       required: [number]
+
+    ScrapeTranslateRequest:
+      type: object
+      description: 对比界面手动翻译请求；仅传需要翻译的字段（省略/空白不处理）
+      properties:
+        title:
+          type: string
+          nullable: true
+          description: 标题原文（做翻译或繁→简转换）
+        plot:
+          type: string
+          nullable: true
+          description: 简介原文（做翻译或繁→简转换）
+        genres:
+          type: string
+          nullable: true
+          description: 类别原文，逗号/顿号/斜杠/换行分隔；逐个翻译后以「 / 」重新拼接
+
+    ScrapeTranslateResponse:
+      type: object
+      description: 手动翻译结果，字段与请求一一对应（翻译失败回退原文）
+      properties:
+        title:
+          type: string
+          nullable: true
+        plot:
+          type: string
+          nullable: true
+        genres:
+          type: string
+          nullable: true
 
     OrganizeRequest:
       type: object
@@ -1728,7 +1785,7 @@ components:
 
     EmbyRescrapeApplyRequest:
       type: object
-      description: 多源对比重新刮削应用：按逐字段来源选择组装元数据并回写 Emby（留空字段不回写，manual 值视为最终文本不翻译）
+      description: 多源对比重新刮削应用：按逐字段来源选择与输入框当前内容组装元数据并回写 Emby（留空字段不回写，不自动翻译）
       properties:
         number:
           type: string

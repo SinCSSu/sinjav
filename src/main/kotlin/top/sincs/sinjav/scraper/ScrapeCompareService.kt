@@ -4,13 +4,16 @@ import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
 import top.sincs.sinjav.api.dto.ScrapeApplyRequest
 import top.sincs.sinjav.api.dto.ScrapePreviewResponse
+import top.sincs.sinjav.api.dto.ScrapeTranslateRequest
+import top.sincs.sinjav.api.dto.ScrapeTranslateResponse
 import top.sincs.sinjav.scan.NumberRecognizer
 import java.time.LocalDate
 
 /**
  * 多源对比刮削：预览返回各数据源的原始字段值（不落库），
  * 用户逐字段选择来源（各源 / 留空 / 手动输入）后应用落库。
- * 落库时标题/简介按常规刮削规则翻译（手动输入的值视为最终文本，不翻译）。
+ * 落库不再自动翻译：标题/简介/类别的翻译或繁→简转换由前端「翻译」按钮调用
+ * [translateFields] 预先回填输入框，保存时按输入框当前内容落库（保存即所见）。
  */
 @Service
 class ScrapeCompareService(
@@ -69,7 +72,18 @@ class ScrapeCompareService(
     /** 列表字段值解析：按逗号/顿号/斜杠/换行分隔 */
     fun splitListValues(value: String?): List<String> = splitList(value)
 
-    /** 落库：按逐字段选择组装元数据，翻译标题/简介后写库并下载图片（同步） */
+    /**
+     * 手动翻译（对比界面「翻译」按钮）：标题/简介走翻译或繁→简转换（失败回退原文），
+     * 类别逐个翻译后以「 / 」重新拼接。仅处理请求中携带的非空白字段，其余返回 null。
+     */
+    fun translateFields(req: ScrapeTranslateRequest): ScrapeTranslateResponse = ScrapeTranslateResponse(
+        title = req.title?.trim()?.takeIf { it.isNotBlank() }?.let { translation.translateToZh(it) ?: it },
+        plot = req.plot?.trim()?.takeIf { it.isNotBlank() }?.let { translation.translateToZh(it) ?: it },
+        genres = req.genres?.trim()?.takeIf { it.isNotBlank() }
+            ?.let { splitList(it).joinToString(" / ") { tag -> translation.translateLabel(tag) } },
+    )
+
+    /** 落库：按逐字段选择与输入框当前内容组装元数据（不自动翻译），写库并下载图片（同步） */
     fun apply(req: ScrapeApplyRequest) {
         val n = NumberRecognizer.normalize(req.number.trim())
             ?: throw IllegalArgumentException("无法识别番号: ${req.number}")
@@ -98,16 +112,10 @@ class ScrapeCompareService(
         val titleVal = valueOf("title")
         val titleManual = choice("title")?.source == "manual"
         val titleOrig = if (titleManual) null else titleVal
-        val titleZhTranslated = if (titleManual || titleVal == null) null else translation.translateToZh(titleVal)
-        // 元数据标题统一为「番号-中文标题」（title_orig 保留原题，NFO originaltitle / {title} 模板用）
-        val title = titleVal?.let { "$n-${titleZhTranslated ?: it}" }
+        // 保存即所见：输入框内容为最终标题（可能已由前端「翻译」按钮回填译文），统一加番号前缀
+        val title = titleVal?.let { "$n-$it" }
 
-        val plotVal = valueOf("plot")
-        val plot = when {
-            plotVal == null -> null
-            choice("plot")?.source == "manual" -> plotVal
-            else -> translation.translateToZh(plotVal)?.let { "$it\n\n$plotVal" } ?: plotVal
-        }
+        val plot = valueOf("plot")
 
         val releaseDate = valueOf("releaseDate")?.let { runCatching { LocalDate.parse(it) }.getOrNull() }
         val durationMin = valueOf("durationMin")?.toIntOrNull()

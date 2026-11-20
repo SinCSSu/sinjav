@@ -102,9 +102,6 @@
       <el-card shadow="never" class="settings-card">
         <template #header>整理设置</template>
         <el-form label-width="140px" label-position="left">
-          <el-form-item>
-            <span class="hint">目标目录与整理方式不再全局配置，每次整理时在整理弹窗 / 流水线中指定</span>
-          </el-form-item>
           <el-form-item label="命名模板">
             <el-input
               v-model="form.namingTemplate"

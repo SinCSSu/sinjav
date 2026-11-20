@@ -113,37 +113,34 @@
                 @keyup.enter="rescrapeByNumber"
               />
               <el-button size="small" :loading="refreshing" @click="rescrapeByNumber">重新刮削</el-button>
-              <span class="cmp-hint">番号识别错了可修改后重新刮削；逐字段选择来源；「留空」= 不回写该字段，「手动输入」= 自定义值（不翻译）；应用时标题/简介自动译为中文</span>
+              <span class="cmp-hint">番号识别错了可修改后重新刮削；逐字段选择来源后可直接编辑值，「留空」= 不回写该字段；点「翻译」对标题/简介/类别做翻译或繁→简转换并回填，保存时按输入框当前内容回写 Emby</span>
             </span>
             <el-button size="small" text @click="preview = null">关闭</el-button>
           </div>
           <div class="cmp-fields">
             <div v-for="f in EMBY_FIELDS" :key="f.key" class="cmp-row">
               <span class="k">{{ f.label }}</span>
-              <el-select v-model="sel[f.key]" size="small" class="cmp-select" @change="syncAllEmpty">
+              <el-select v-model="sel[f.key]" size="small" class="cmp-select" @change="onSelChange(f.key)">
                 <el-option v-for="s in fieldSources(f.key)" :key="s" :label="s" :value="s" />
                 <el-option label="留空" value="" />
                 <el-option label="手动输入" :value="MANUAL" />
               </el-select>
               <el-input
-                v-if="sel[f.key] === MANUAL"
-                v-model="manual[f.key]"
+                v-model="vals[f.key]"
                 size="small"
                 :type="f.multiline ? 'textarea' : 'text'"
                 :rows="f.key === 'plot' ? 4 : 2"
-                :placeholder="f.key === 'actresses' ? '多个用逗号分隔' : '输入自定义值'"
+                :disabled="!sel[f.key]"
+                :placeholder="sel[f.key] === MANUAL ? '输入自定义值' : '留空不回写'"
                 class="cmp-value cmp-manual"
-                @change="syncAllEmpty"
               />
-              <div v-else class="cmp-value" :class="{ multiline: f.multiline }">
-                {{ fieldDisplay(f.key, sel[f.key]) ?? '—' }}
-              </div>
             </div>
           </div>
           <div class="diff-actions">
             <el-button @click="preview = null">取消</el-button>
+            <el-button :loading="translating" :disabled="!preview" @click="translateFields">翻译</el-button>
             <el-button type="primary" :loading="applying" :disabled="allEmpty" @click="applyPreview">
-              应用到 Emby
+              保存
             </el-button>
           </div>
         </div>
@@ -181,13 +178,15 @@ const editing = ref(false)
 const saving = ref(false)
 const refreshing = ref(false)
 const applying = ref(false)
+const translating = ref(false)
 
 /** 刮削预览结果 */
 const preview = ref<EmbyRescrapePreview | null>(null)
 
 // 逐字段来源选择：key → 来源 id / ''(留空=不回写) / MANUAL(手动输入)
 const sel = ref<Record<string, string>>({})
-const manual = ref<Record<string, string>>({})
+/** key → 可编辑的最终值：切换来源时自动填入该来源原文，可直接编辑或点「翻译」回填译文后再保存 */
+const vals = ref<Record<string, string>>({})
 /** 对比面板内可编辑的番号（识别错了可改后重新刮削） */
 const numberInput = ref('')
 
@@ -212,7 +211,7 @@ watch(
       editing.value = false
       preview.value = null
       sel.value = {}
-      manual.value = {}
+      vals.value = {}
     }
   },
 )
@@ -282,7 +281,7 @@ async function rescrape() {
   refreshing.value = true
   preview.value = null
   sel.value = {}
-  manual.value = {}
+  vals.value = {}
   try {
     await doPreview()
   } catch (e) {
@@ -344,10 +343,17 @@ async function promptManualNumber() {
   }
 }
 
-/** 打开对比面板：默认按合并规则选来源（source-order 靠前的源优先）；无值字段留空 */
+/** 打开对比面板：默认按合并规则选来源（source-order 靠前的源优先），各字段预填默认来源原文；无值字段留空 */
 function buildSel(result: EmbyRescrapePreview) {
   sel.value = Object.fromEntries(EMBY_FIELDS.map(f => [f.key, result.defaults[f.key] ?? '']))
-  manual.value = Object.fromEntries(EMBY_FIELDS.map(f => [f.key, '']))
+  vals.value = Object.fromEntries(EMBY_FIELDS.map(f => [f.key, result.fields[f.key]?.[result.defaults[f.key] ?? ''] ?? '']))
+  syncAllEmpty()
+}
+
+/** 切换字段来源时重填该字段的值（选中来源原文 / 留空清空），并同步「全部留空」状态 */
+function onSelChange(key: string) {
+  const src = sel.value[key]
+  vals.value[key] = src && src !== MANUAL ? (fieldValue(key, src) ?? '') : ''
   syncAllEmpty()
 }
 
@@ -363,15 +369,28 @@ function fieldValue(key: string, source: string | undefined): string | null {
   return preview.value.fields[key]?.[source] ?? null
 }
 
-/** 女优等列表字段原文显示为「/」分隔 */
-function fieldDisplay(key: string, source: string | undefined): string | null {
-  const v = fieldValue(key, source)
-  if (v == null) return null
-  if (key === 'actresses') return v.split(/[,，、/\n]/).map(s => s.trim()).filter(Boolean).join(' / ')
-  return v
+/** 翻译：对输入框中的标题/简介/类别做翻译或繁→简转换，译文回填输入框（不回写 Emby） */
+async function translateFields() {
+  if (!preview.value) return
+  translating.value = true
+  try {
+    const res = await api.scrapeTranslate({
+      title: (vals.value.title ?? '').trim() || undefined,
+      plot: (vals.value.plot ?? '').trim() || undefined,
+      genres: (vals.value.genres ?? '').trim() || undefined,
+    })
+    for (const k of ['title', 'plot', 'genres'] as const) {
+      if (res[k]) vals.value[k] = res[k]!
+    }
+    ElMessage.success('翻译完成，保存时按输入框当前内容回写 Emby')
+  } catch (e) {
+    ElMessage.error(e instanceof Error ? e.message : String(e))
+  } finally {
+    translating.value = false
+  }
 }
 
-/** 把逐字段选择回写到 Emby（留空字段不回写；标题/简介由后端翻译） */
+/** 保存：把逐字段选择与输入框当前内容回写 Emby（留空字段不回写，不自动翻译） */
 async function applyPreview() {
   const p = preview.value
   if (!p) return
@@ -380,10 +399,9 @@ async function applyPreview() {
     const s = sel.value[f.key] ?? ''
     if (s === '') {
       fields[f.key] = { source: null }
-    } else if (s === MANUAL) {
-      fields[f.key] = { source: 'manual', value: manual.value[f.key] }
     } else {
-      fields[f.key] = { source: s, value: fieldValue(f.key, s) }
+      // 值取输入框当前内容（原文或翻译回填的译文，保存即所见）
+      fields[f.key] = { source: s === MANUAL ? 'manual' : s, value: vals.value[f.key] }
     }
   }
   applying.value = true
@@ -392,7 +410,7 @@ async function applyPreview() {
     detail.value = await api.getEmbyItem(props.itemId)
     preview.value = null
     sel.value = {}
-    manual.value = {}
+    vals.value = {}
     ElMessage.success('已回写 Emby')
   } catch (e) {
     ElMessage.error(e instanceof Error ? e.message : String(e))

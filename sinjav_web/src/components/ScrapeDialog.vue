@@ -106,8 +106,8 @@
               重新刮削
             </el-button>
             <span class="cmp-hint">
-              番号识别错了可直接修改后重新刮削，落库时原记录改用新番号；
-              各字段值可直接编辑（来源选择值按来源翻译，手动输入不翻译），「留空」= 不落库该字段
+              番号识别错了可直接修改后重新刮削，保存时原记录改用新番号；
+              各字段值可直接编辑，「留空」= 不落库该字段；点「翻译」对标题/简介/类别做翻译或繁→简转换并回填，保存时按输入框当前内容落库
             </span>
           </div>
           <el-scrollbar v-if="preview" class="cmp-scroll">
@@ -166,8 +166,9 @@
       <div class="dialog-footer">
         <template v-if="compareMode">
           <el-button :disabled="applying" @click="compareMode = false">返回详情</el-button>
+          <el-button :loading="translating" :disabled="!preview" @click="translateFields">翻译</el-button>
           <el-button type="primary" :loading="applying" :disabled="!preview" @click="applyCompare">
-            落库
+            保存
           </el-button>
         </template>
         <template v-else>
@@ -240,12 +241,13 @@ let pollTimer: number | undefined
 const compareMode = ref(false)
 const compareLoading = ref(false)
 const applying = ref(false)
+const translating = ref(false)
 const preview = ref<ScrapePreviewResponse | null>(null)
 /** 对比界面可编辑的番号（识别错了可改后重新刮削） */
 const numberInput = ref('')
 /** key → 来源 id / ''(留空) / MANUAL(手动输入) */
 const sel = ref<Record<string, string>>({})
-/** key → 可编辑的最终值：切换来源时自动填入该来源原文，可直接改后再落库 */
+/** key → 可编辑的最终值：切换来源时自动填入该来源原文，可直接编辑或点「翻译」回填译文后再保存 */
 const vals = ref<Record<string, string>>({})
 
 // 大图预览
@@ -380,7 +382,28 @@ const currentPreviews = computed(() =>
     .filter(Boolean),
 )
 
-/** 落库：按逐字段选择应用；番号被编辑过时原记录改用新番号落库 */
+/** 翻译：对输入框中的标题/简介/类别做翻译或繁→简转换，译文回填输入框（不落库） */
+async function translateFields() {
+  if (!preview.value) return
+  translating.value = true
+  try {
+    const res = await api.scrapeTranslate({
+      title: liveValue('title').trim() || undefined,
+      plot: liveValue('plot').trim() || undefined,
+      genres: liveValue('genres').trim() || undefined,
+    })
+    for (const k of ['title', 'plot', 'genres'] as const) {
+      if (res[k]) vals.value[k] = res[k]!
+    }
+    ElMessage.success('翻译完成，保存时按输入框当前内容落库')
+  } catch (e) {
+    ElMessage.error(e instanceof Error ? e.message : String(e))
+  } finally {
+    translating.value = false
+  }
+}
+
+/** 保存：按逐字段选择与输入框当前内容落库；番号被编辑过时原记录改用新番号落库 */
 async function applyCompare() {
   if (!selected.value || !preview.value) return
   const fields: Record<string, ScrapeFieldChoice> = {}
@@ -391,7 +414,7 @@ async function applyCompare() {
     } else if (s === MANUAL) {
       fields[f.key] = { source: 'manual', value: vals.value[f.key] }
     } else {
-      // 值取输入框当前内容（用户可直接改来源原文后再落库）
+      // 值取输入框当前内容（原文或翻译回填的译文，保存即所见）
       fields[f.key] = { source: s, value: vals.value[f.key] }
     }
   }

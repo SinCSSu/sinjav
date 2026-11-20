@@ -12,9 +12,6 @@
         <el-button type="primary" @click="showOrganize = true">
           <el-icon><FolderChecked /></el-icon>整理
         </el-button>
-        <el-button type="warning" @click="showPipeline = true">
-          <el-icon><VideoPlay /></el-icon>流水线
-        </el-button>
       </div>
     </div>
 
@@ -53,7 +50,6 @@
     <ScanDialog v-model="showScan" @created="loadAll" />
     <ScrapeDialog v-model="showScrape" @created="loadAll" />
     <OrganizeDialog v-model="showOrganize" @created="loadAll" />
-    <PipelineDialog v-model="showPipeline" @created="loadAll" />
   </div>
 </template>
 
@@ -66,7 +62,6 @@ import { jobTypeLabels } from '../utils'
 import ScanDialog from '../components/ScanDialog.vue'
 import ScrapeDialog from '../components/ScrapeDialog.vue'
 import OrganizeDialog from '../components/OrganizeDialog.vue'
-import PipelineDialog from '../components/PipelineDialog.vue'
 
 const router = useRouter()
 
@@ -75,7 +70,6 @@ const runningJobs = ref<Job[]>([])
 const showScan = ref(false)
 const showScrape = ref(false)
 const showOrganize = ref(false)
-const showPipeline = ref(false)
 
 const statCards = computed(() => [
   { label: '影片总数', value: stats.total },

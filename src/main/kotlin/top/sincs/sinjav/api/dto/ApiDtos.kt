@@ -59,7 +59,7 @@ data class ScrapeFieldChoice(
     val value: String? = null,
 )
 
-/** 多源对比刮削落库：逐字段应用用户选择的来源/手动值，翻译后写库并下载图片 */
+/** 多源对比刮削落库：逐字段应用用户选择的来源/手动值，按输入框当前内容写库并下载图片（不自动翻译） */
 data class ScrapeApplyRequest(
     @field:jakarta.validation.constraints.NotBlank(message = "number 必填")
     val number: String,
@@ -69,6 +69,23 @@ data class ScrapeApplyRequest(
      */
     val recordNumber: String? = null,
     val fields: Map<String, ScrapeFieldChoice> = emptyMap(),
+)
+
+/**
+ * 对比界面手动翻译：对标题/简介做翻译或繁→简转换、类别逐个翻译，
+ * 返回译文供前端回填输入框（不落库）；字段省略/空白则不处理，返回 null。
+ */
+data class ScrapeTranslateRequest(
+    val title: String? = null,
+    val plot: String? = null,
+    val genres: String? = null,
+)
+
+/** 手动翻译结果：与请求字段一一对应，译文已回填就绪（类别以「 / 」重新拼接） */
+data class ScrapeTranslateResponse(
+    val title: String? = null,
+    val plot: String? = null,
+    val genres: String? = null,
 )
 
 data class OrganizeRequest(

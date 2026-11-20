@@ -9,7 +9,6 @@ import top.sincs.sinjav.api.dto.ScrapeFieldChoice
 import top.sincs.sinjav.scan.NumberRecognizer
 import top.sincs.sinjav.scraper.ScrapeCompareService
 import top.sincs.sinjav.scraper.ScraperChain
-import top.sincs.sinjav.scraper.TranslationService
 import java.nio.file.Path
 import java.time.LocalDate
 
@@ -17,14 +16,14 @@ import java.time.LocalDate
  * Emby 条目「重新刮削」：用本应用的刮削管线刮取元数据，先返回各来源对比供逐字段选择，再回写 Emby。
  *
  * 流程：从条目文件名/原标题/标题提取番号 → 并发抓取全部数据源 → 返回各源原始值 + 合并默认值（不推送）。
- * 应用时按逐字段来源选择组装元数据（标题/简介翻译；manual 值不翻译）后回写 Emby。
+ * 应用时按输入框当前内容回写 Emby（不自动翻译：翻译/繁→简转换由前端「翻译」按钮调用
+ * /scrape/translate 预先回填，保存即所见）。
  * 同步执行（单次刮削受请求限速影响，可能耗时数十秒）。
  */
 @Service
 class EmbyRescrapeService(
     private val emby: EmbyClient,
     private val chain: ScraperChain,
-    private val translation: TranslationService,
     private val recognizer: NumberRecognizer,
     private val compare: ScrapeCompareService,
 ) {
@@ -100,24 +99,18 @@ class EmbyRescrapeService(
     }
 
     /**
-     * 按逐字段选择组装 EmbyMetadataUpdate：
-     * 标题→名称（译中文，统一为「番号-中文标题」）+ 原标题（原文）；简介→概述（译中文）；日期→发行日期+年份；
-     * 厂商/厂牌→工作室；女优/系列/导演/厂牌→标签；类别→类别（过滤画质标签并译名）。
-     * 留空的字段不回写；manual 值视为最终文本不翻译。
+     * 按逐字段选择组装 EmbyMetadataUpdate（不自动翻译，保存输入框当前内容）：
+     * 标题→名称（统一为「番号-标题」）+ 原标题；简介→概述；日期→发行日期+年份；
+     * 厂商/厂牌→工作室；女优/系列/导演/厂牌→标签；类别→类别（过滤画质标签）。
+     * 留空的字段不回写；manual 值为用户自定义文本。
      */
     private fun toUpdate(number: String, fields: Map<String, ScrapeFieldChoice>): EmbyMetadataUpdate {
         val values = compare.chosenValues(fields)
 
         val titleVal = values["title"]
         val titleManual = fields["title"]?.source == "manual"
-        val titleZh = if (titleManual || titleVal == null) null else translation.translateToZh(titleVal)
 
         val plotVal = values["plot"]
-        val plot = when {
-            plotVal == null -> null
-            fields["plot"]?.source == "manual" -> plotVal
-            else -> translation.translateToZh(plotVal)
-        }
 
         val releaseDate = values["releaseDate"]?.let { runCatching { LocalDate.parse(it) }.getOrNull() }
         val director = values["director"]
@@ -127,8 +120,7 @@ class EmbyRescrapeService(
         val actresses = compare.splitListValues(values["actresses"])
         val genres = compare.splitListValues(values["genres"])
             .filter { !qualityTagRegex.containsMatchIn(it) }
-            .map { translation.translateLabel(it) }
-            .filter { it.isNotBlank() && !qualityTagRegex.containsMatchIn(it) }
+            .filter { it.isNotBlank() }
             .distinct()
 
         val studios = listOfNotNull(maker, label)
@@ -140,10 +132,10 @@ class EmbyRescrapeService(
         }.distinct()
 
         return EmbyMetadataUpdate(
-            // 名称统一为「番号-中文标题」
-            name = titleVal?.let { "$number-${titleZh ?: it}" },
+            // 名称统一为「番号-标题」
+            name = titleVal?.let { "$number-$it" },
             originalTitle = if (titleManual) null else titleVal,
-            overview = plot,
+            overview = plotVal,
             genres = genres.ifEmpty { null },
             studios = studios.ifEmpty { null },
             tags = tags.ifEmpty { null },

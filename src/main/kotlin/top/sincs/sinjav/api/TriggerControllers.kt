@@ -23,6 +23,8 @@ import top.sincs.sinjav.api.dto.ScrapeApplyRequest
 import top.sincs.sinjav.api.dto.ScrapePreviewRequest
 import top.sincs.sinjav.api.dto.ScrapePreviewResponse
 import top.sincs.sinjav.api.dto.ScrapeRequest
+import top.sincs.sinjav.api.dto.ScrapeTranslateRequest
+import top.sincs.sinjav.api.dto.ScrapeTranslateResponse
 import top.sincs.sinjav.job.JobService
 import top.sincs.sinjav.job.PipelineParams
 import top.sincs.sinjav.organize.Organizer
@@ -98,12 +100,17 @@ class TriggerControllers(
     @PostMapping("/scrape/preview")
     fun scrapePreview(@RequestBody req: ScrapePreviewRequest): ScrapePreviewResponse = compare.preview(req.number)
 
-    /** 多源对比刮削落库：按逐字段来源选择（各源/留空/手动输入）写库并下载图片（同步） */
+    /** 多源对比刮削落库：按逐字段来源选择（各源/留空/手动输入）与输入框当前内容写库并下载图片（同步，不自动翻译） */
     @PostMapping("/scrape/apply")
     fun scrapeApply(@RequestBody req: ScrapeApplyRequest): Map<String, String> {
         compare.apply(req)
         return mapOf("number" to req.number, "status" to "scraped")
     }
+
+    /** 对比界面手动翻译：翻译/繁→简转换标题、简介，逐个翻译类别，返回译文供回填输入框（同步，不落库） */
+    @PostMapping("/scrape/translate")
+    fun scrapeTranslate(@RequestBody req: ScrapeTranslateRequest): ScrapeTranslateResponse =
+        compare.translateFields(req)
 
     /** 手动落库：手动录入元数据并上传封面/剧照（multipart，同步落库，不抓取不翻译） */
     @PostMapping("/scrape/manual", consumes = [MediaType.MULTIPART_FORM_DATA_VALUE])

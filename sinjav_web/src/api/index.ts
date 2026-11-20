@@ -32,6 +32,8 @@ import type {
   ScrapeApplyRequest,
   ScrapePreviewResponse,
   ScrapeRequest,
+  ScrapeTranslateRequest,
+  ScrapeTranslateResponse,
   Settings,
   SettingsUpdate,
 } from './types'
@@ -160,9 +162,13 @@ export const api = {
   scrapePreview(body: { number: string }) {
     return post<ScrapePreviewResponse>('/scrape/preview', body)
   },
-  /** 多源对比刮削落库：按逐字段来源选择写库并下载图片 */
+  /** 多源对比刮削落库：按逐字段来源选择写库并下载图片（不自动翻译，保存输入框当前内容） */
   scrapeApply(body: ScrapeApplyRequest) {
     return post<{ number: string; status: string }>('/scrape/apply', body)
+  },
+  /** 对比界面手动翻译：翻译/繁→简转换标题、简介，逐个翻译类别，返回译文供回填输入框（不落库） */
+  scrapeTranslate(body: ScrapeTranslateRequest) {
+    return post<ScrapeTranslateResponse>('/scrape/translate', body)
   },
   /** 手动落库：手动录入元数据并上传封面/剧照（multipart，同步落库，不抓取不翻译） */
   scrapeManual(form: FormData) {
