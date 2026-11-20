@@ -1,10 +1,10 @@
 # sinJav + trawl（CF 过盾代理）+ Redis 联合部署
-# 启动：docker compose up -d --build
+# 启动：docker compose up -d
 # 说明：三个容器同网络（compose 默认网络，服务名互访 trawl/redis）；
 #       sinjav 在 trawl 健康检查通过后启动；trawl 的 CA 证书卷同时只读挂载给 sinjav。
+#       镜像不再本地构建，需提前准备 sinjav:latest（如 docker build -t sinjav:latest .）
 services:
   sinjav:
-    build: .
     image: sinjav:latest
     container_name: sinjav
     restart: unless-stopped
