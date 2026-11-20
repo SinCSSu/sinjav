@@ -207,8 +207,11 @@ async function submit() {
   position: relative;
   z-index: 1;
   display: grid;
-  grid-template-columns: 220px 400px;
+  /* 黄金分割：左右半区 38.2% / 61.8%，整卡宽高 1.618:1 */
+  grid-template-columns: 382fr 618fr;
+  aspect-ratio: 1618 / 1000;
   min-height: 560px;
+  max-width: calc(100vw - 48px);
   border-radius: 24px;
   overflow: hidden;
   border: 1px solid var(--glass-border);
@@ -391,7 +394,7 @@ async function submit() {
 }
 @keyframes spin { to { transform: rotate(360deg); } }
 @media (max-width: 900px) {
-  .auth-shell { grid-template-columns: 1fr; max-width: 440px; width: 100%; }
+  .auth-shell { grid-template-columns: 1fr; aspect-ratio: auto; max-width: 440px; width: 100%; }
   .brand-panel { display: none; }
   .form-panel { padding: 36px 28px 28px; }
   .ambient-ring { display: none; }
