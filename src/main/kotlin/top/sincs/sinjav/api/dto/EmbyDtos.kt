@@ -36,6 +36,20 @@ data class EmbySyncResultDto(
     val syncedAt: String,
 )
 
+/**
+ * 图片推送请求（重新刮削界面「推送封面/推送剧照」）：
+ * number 番号用于本地图片缓存与 FC2 裁剪排除；coverUrl/previewUrls 为重新刮削预览中的
+ * 图片 URL（可空，为空时回退读取本地图片缓存）。
+ */
+data class EmbyImagePushRequest(
+    val number: String,
+    val coverUrl: String? = null,
+    val previewUrls: List<String>? = null,
+)
+
+/** 图片推送结果：成功上传到 Emby 的图片数 */
+data class EmbyImagePushResult(val pushed: Int)
+
 data class EmbyItemDetailDto(
     val id: String,
     val name: String,

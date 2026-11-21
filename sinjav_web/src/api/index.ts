@@ -1,6 +1,8 @@
 import type {
   AuthStatus,
   CredentialsUpdate,
+  EmbyImagePushRequest,
+  EmbyImagePushResult,
   EmbyRescrapeApplyRequest,
   EmbyItemDetail,
   EmbyLibrary,
@@ -313,5 +315,13 @@ export const api = {
   /** 重新刮削应用：按逐字段来源选择组装元数据并回写 Emby（留空字段不回写） */
   applyEmbyRescrape(id: string, body: EmbyRescrapeApplyRequest) {
     return post<EmbyMetadataUpdate>(`/emby/items/${encodeURIComponent(id)}/rescrape/apply`, body)
+  },
+  /** 推送封面到 Emby（Primary 图）：URL 优先（横版自动裁竖版），回退本地缓存 */
+  pushEmbyCover(id: string, body: EmbyImagePushRequest) {
+    return post<EmbyImagePushResult>(`/emby/items/${encodeURIComponent(id)}/images/primary`, body)
+  },
+  /** 推送剧照到 Emby（Backdrop）：清空已有背景图后逐张上传 */
+  pushEmbyBackdrops(id: string, body: EmbyImagePushRequest) {
+    return post<EmbyImagePushResult>(`/emby/items/${encodeURIComponent(id)}/images/backdrops`, body)
   },
 }

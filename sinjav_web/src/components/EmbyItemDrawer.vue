@@ -12,7 +12,11 @@
         <!-- 头部：封面 + 标题区 -->
         <div class="hero">
           <div class="cover-wrap">
-            <img v-if="detail.hasImage" :src="embyPosterUrl(detail.id)" alt="" />
+            <img
+              v-if="detail.hasImage"
+              :src="coverBust ? `${embyPosterUrl(detail.id)}?t=${coverBust}` : embyPosterUrl(detail.id)"
+              alt=""
+            />
             <div v-else class="cover-placeholder">{{ detail.name }}</div>
           </div>
           <div class="hero-info">
@@ -136,6 +140,8 @@
             </div>
           </div>
           <div class="diff-actions">
+            <el-button :loading="pushingCover" :disabled="!preview" @click="pushCover">推送封面</el-button>
+            <el-button :loading="pushingBackdrops" :disabled="!preview" @click="pushBackdrops">推送剧照</el-button>
             <el-button @click="preview = null">取消</el-button>
             <el-button :loading="translating" :disabled="!preview" @click="translateFields">翻译</el-button>
             <el-button type="primary" :loading="applying" :disabled="allEmpty" @click="applyPreview">
@@ -178,6 +184,10 @@ const saving = ref(false)
 const refreshing = ref(false)
 const applying = ref(false)
 const translating = ref(false)
+const pushingCover = ref(false)
+const pushingBackdrops = ref(false)
+/** 封面推送成功后的 cache-bust 时间戳（代理图有 86400 缓存头，需换 URL 强制刷新） */
+const coverBust = ref(0)
 
 /** 刮削预览结果 */
 const preview = ref<EmbyRescrapePreview | null>(null)
@@ -386,6 +396,56 @@ async function translateFields() {
     ElMessage.error(e instanceof Error ? e.message : String(e))
   } finally {
     translating.value = false
+  }
+}
+
+/** 取预览中某图片字段的默认来源值（coverUrl 为单条 URL；previewUrls 为换行分隔的多条 URL） */
+function defaultImageValue(key: 'coverUrl' | 'previewUrls'): string {
+  const p = preview.value
+  if (!p) return ''
+  const def = p.defaults[key] ?? ''
+  return p.fields[key]?.[def] ?? ''
+}
+
+/** 推送封面：用预览的封面 URL（后端下载并裁竖版后上传 Emby Primary；无 URL 时后端回退本地缓存） */
+async function pushCover() {
+  const p = preview.value
+  if (!p) return
+  pushingCover.value = true
+  try {
+    await api.pushEmbyCover(props.itemId, {
+      number: p.matchedNumber,
+      coverUrl: defaultImageValue('coverUrl') || undefined,
+    })
+    detail.value = await api.getEmbyItem(props.itemId)
+    coverBust.value = Date.now()
+    ElMessage.success('封面已推送到 Emby')
+  } catch (e) {
+    ElMessage.error(e instanceof Error ? e.message : String(e))
+  } finally {
+    pushingCover.value = false
+  }
+}
+
+/** 推送剧照：用预览的剧照 URL 列表（后端清空已有 Backdrop 后逐张上传；无 URL 时回退本地缓存） */
+async function pushBackdrops() {
+  const p = preview.value
+  if (!p) return
+  pushingBackdrops.value = true
+  try {
+    const urls = defaultImageValue('previewUrls')
+      .split(/\r?\n/)
+      .map((s) => s.trim())
+      .filter(Boolean)
+    const r = await api.pushEmbyBackdrops(props.itemId, {
+      number: p.matchedNumber,
+      previewUrls: urls.length ? urls : undefined,
+    })
+    ElMessage.success(`已推送 ${r.pushed} 张剧照到 Emby`)
+  } catch (e) {
+    ElMessage.error(e instanceof Error ? e.message : String(e))
+  } finally {
+    pushingBackdrops.value = false
   }
 }
 

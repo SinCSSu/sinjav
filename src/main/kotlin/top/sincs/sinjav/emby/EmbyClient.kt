@@ -106,6 +106,21 @@ class EmbyClient(
         return mapper.readTree(String(resp.body(), Charsets.UTF_8))
     }
 
+    /** 图片二进制请求（上传封面/剧照）：Content-Type 为图片类型，body 为原始图片字节 */
+    private fun exchangeImage(method: String, path: String, contentType: String, body: ByteArray): HttpResponse<ByteArray> {
+        val url = buildString { append(baseUrl()); append(path) }
+        val builder = HttpRequest.newBuilder(URI.create(url))
+            .timeout(Duration.ofMillis(props.scraper.timeoutMs))
+            .header("X-Emby-Token", props.emby.apiKey.trim())
+            .header("Content-Type", contentType)
+            .method(method, HttpRequest.BodyPublishers.ofByteArray(body))
+        val resp = client().send(builder.build(), HttpResponse.BodyHandlers.ofByteArray())
+        if (resp.statusCode() >= 400) {
+            throw EmbyException(resp.statusCode(), "Emby 请求失败: HTTP ${resp.statusCode()} $path")
+        }
+        return resp
+    }
+
     // ---------- 用户 ----------
 
     /** 管理 key 可列出用户；取首个管理员（无则第一个），缓存复用 */
@@ -213,6 +228,30 @@ class EmbyClient(
     }
 
     data class ImageResponse(val bytes: ByteArray, val contentType: String?)
+
+    // ---------- 图片上传（重新刮削推送封面/剧照） ----------
+
+    /**
+     * 上传图片：POST /Items/{Id}/Images/{imageType}（不带索引时追加到对应类型，Backdrop 即新增一张背景图）。
+     * 带索引（index >= 0）时写入指定位置。
+     */
+    fun uploadImage(id: String, imageType: String, bytes: ByteArray, contentType: String = "image/jpeg", index: Int? = null) {
+        val path = buildString {
+            append("/Items/").append(urlEncode(id)).append("/Images/").append(urlEncode(imageType))
+            if (index != null) append("/").append(index)
+        }
+        val resp = exchangeImage("POST", path, contentType, bytes)
+        log.info("Emby 图片已上传 itemId={} type={} index={} bytes={} -> HTTP {}", id, imageType, index, bytes.size, resp.statusCode())
+    }
+
+    /** 删除指定索引的图片：DELETE /Items/{Id}/Images/{imageType}/{index} */
+    fun deleteImage(id: String, imageType: String, index: Int) {
+        exchange("DELETE", "/Items/${urlEncode(id)}/Images/${urlEncode(imageType)}/$index")
+    }
+
+    /** 条目现有背景图数量（BackdropImageTags 数组长度） */
+    fun backdropCount(id: String): Int =
+        getJson("/Users/${userId()}/Items/${urlEncode(id)}").path("BackdropImageTags").size()
 
     // ---------- JSON 映射 ----------
 

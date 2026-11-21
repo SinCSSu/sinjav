@@ -123,6 +123,30 @@ class ImageStore(
     /** 本地图片相对 Web 路径（/local-images/{番号}/文件名），不存在时由前端回退到代理 */
     fun localUrl(number: String, file: String): String = "/local-images/$number/$file"
 
+    /** 读取本地缓存封面（poster.jpg），不存在返回 null（Emby 图片推送回退用） */
+    fun readPoster(number: String): ByteArray? =
+        runCatching { Path.of(props.images.dir).resolve(number).resolve("poster.jpg") }
+            .map { if (Files.isRegularFile(it)) Files.readAllBytes(it) else null }
+            .getOrNull()
+
+    /** 读取本地缓存剧照（preview1..N.jpg，按序号排序），无缓存返回空列表 */
+    fun readPreviews(number: String): List<ByteArray> {
+        val dir = Path.of(props.images.dir).resolve(number)
+        if (!Files.isDirectory(dir)) return emptyList()
+        return runCatching {
+            Files.list(dir).use { stream ->
+                stream.map { it.fileName.toString().lowercase() }
+                    .filter { Regex("preview\\d+\\.jpg").matches(it) }
+                    .sorted { a, b -> extractPreviewIndex(a) - extractPreviewIndex(b) }
+                    .map { Files.readAllBytes(dir.resolve(it)) }
+                    .toList()
+            }
+        }.getOrDefault(emptyList())
+    }
+
+    private fun extractPreviewIndex(name: String): Int =
+        Regex("\\d+").find(name)?.value?.toIntOrNull() ?: 0
+
     /** 删除该番号的本地图片缓存目录（删除影片记录时调用，仅影响缓存，不涉及视频文件） */
     fun delete(number: String) {
         val dir = Path.of(props.images.dir).resolve(number)

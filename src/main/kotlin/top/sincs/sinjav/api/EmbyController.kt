@@ -9,6 +9,8 @@ import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RequestParam
 import org.springframework.web.bind.annotation.RestController
+import top.sincs.sinjav.api.dto.EmbyImagePushRequest
+import top.sincs.sinjav.api.dto.EmbyImagePushResult
 import top.sincs.sinjav.api.dto.EmbyItemDetailDto
 import top.sincs.sinjav.api.dto.EmbyPageDto
 import top.sincs.sinjav.api.dto.EmbyLibraryDto
@@ -82,6 +84,20 @@ class EmbyController(
         @PathVariable id: String,
         @RequestBody req: EmbyRescrapeApplyRequest,
     ): EmbyMetadataUpdate = rescrape.apply(id, req)
+
+    /** 推送封面到 Emby（Primary 图）：预览封面 URL 优先（横版自动裁竖版），回退本地图片缓存 */
+    @PostMapping("/emby/items/{id}/images/primary")
+    fun pushCoverImage(
+        @PathVariable id: String,
+        @RequestBody req: EmbyImagePushRequest,
+    ): EmbyImagePushResult = rescrape.pushCover(id, req)
+
+    /** 推送剧照到 Emby（Backdrop）：清空已有背景图后逐张上传（预览剧照 URL 优先，回退本地缓存） */
+    @PostMapping("/emby/items/{id}/images/backdrops")
+    fun pushBackdropImages(
+        @PathVariable id: String,
+        @RequestBody req: EmbyImagePushRequest,
+    ): EmbyImagePushResult = rescrape.pushBackdrops(id, req)
 
     /** 封面代理：Emby 主图经后端转发，不暴露 API Key；无图时 404 */
     @GetMapping("/emby/items/{id}/images/primary")

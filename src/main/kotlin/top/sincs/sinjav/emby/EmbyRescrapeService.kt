@@ -2,11 +2,16 @@ package top.sincs.sinjav.emby
 
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
+import top.sincs.sinjav.api.dto.EmbyImagePushRequest
+import top.sincs.sinjav.api.dto.EmbyImagePushResult
 import top.sincs.sinjav.api.dto.EmbyMetadataUpdate
 import top.sincs.sinjav.api.dto.EmbyRescrapeApplyRequest
 import top.sincs.sinjav.api.dto.EmbyRescrapePreviewDto
 import top.sincs.sinjav.api.dto.ScrapeFieldChoice
 import top.sincs.sinjav.scan.NumberRecognizer
+import top.sincs.sinjav.scraper.CoverCropper
+import top.sincs.sinjav.scraper.HttpClientFactory
+import top.sincs.sinjav.scraper.ImageStore
 import top.sincs.sinjav.scraper.ScrapeCompareService
 import top.sincs.sinjav.scraper.ScraperChain
 import java.nio.file.Path
@@ -26,6 +31,9 @@ class EmbyRescrapeService(
     private val chain: ScraperChain,
     private val recognizer: NumberRecognizer,
     private val compare: ScrapeCompareService,
+    private val http: HttpClientFactory,
+    private val imageStore: ImageStore,
+    private val coverCropper: CoverCropper,
 ) {
     private val log = LoggerFactory.getLogger(EmbyRescrapeService::class.java)
 
@@ -97,6 +105,63 @@ class EmbyRescrapeService(
         emby.updateMetadata(itemId, update)
         return update
     }
+
+    // ---------- 图片推送（重新刮削界面「推送封面/推送剧照」） ----------
+
+    /**
+     * 推送封面到 Emby（Primary 图）：
+     * 预览提供了封面 URL 时优先下载（横版全封套扫描自动裁为竖版，FC2 排除）；
+     * 否则回退本地图片缓存（data/images/{番号}/poster.jpg，已是竖版）。
+     */
+    fun pushCover(itemId: String, req: EmbyImagePushRequest): EmbyImagePushResult {
+        val number = normalizeNumber(req)
+        val urlBytes = req.coverUrl?.trim()?.takeIf { it.isNotBlank() }?.let { url ->
+            runCatching { coverCropper.cropFrontCover(number, http.download(url)) }
+                .onFailure { log.warn("下载封面失败 {}（回退本地缓存）: {}", url, it.message) }
+                .getOrNull()
+        }
+        val bytes = urlBytes ?: imageStore.readPoster(number)
+            ?: throw IllegalArgumentException(
+                "无法获取封面：封面 URL 下载失败或未提供，且本地无 $number 的图片缓存（可先在影片库刮削一次）",
+            )
+        emby.uploadImage(itemId, "Primary", bytes)
+        log.info("Emby 封面已推送 itemId={} 番号={} bytes={}", itemId, number, bytes.size)
+        return EmbyImagePushResult(pushed = 1)
+    }
+
+    /**
+     * 推送剧照到 Emby（Backdrop）：先清空条目已有 Backdrop 再逐张上传，保证重复推送不叠加。
+     * 剧照来源：预览提供的 previewUrls（下载失败的跳过）→ 回退本地图片缓存 preview1..N.jpg。
+     */
+    fun pushBackdrops(itemId: String, req: EmbyImagePushRequest): EmbyImagePushResult {
+        val number = normalizeNumber(req)
+        val urls = req.previewUrls.orEmpty().mapNotNull { it.trim().takeIf { u -> u.isNotBlank() } }
+        val images: List<ByteArray> = if (urls.isNotEmpty()) {
+            urls.mapNotNull { url ->
+                runCatching { http.download(url) }
+                    .onFailure { log.warn("下载剧照失败 {}（跳过）: {}", url, it.message) }
+                    .getOrNull()
+            }
+        } else {
+            imageStore.readPreviews(number)
+        }
+        if (images.isEmpty()) {
+            throw IllegalArgumentException(
+                "无法获取剧照：剧照 URL 下载失败或未提供，且本地无 $number 的剧照缓存（可先在影片库刮削一次）",
+            )
+        }
+        // 从尾到头删除已有 Backdrop（删除会令后续索引前移，倒序删除避免漏删）
+        for (i in emby.backdropCount(itemId) - 1 downTo 0) {
+            runCatching { emby.deleteImage(itemId, "Backdrop", i) }
+                .onFailure { log.warn("删除 Emby 旧背景图失败 index={}: {}", i, it.message) }
+        }
+        images.forEach { emby.uploadImage(itemId, "Backdrop", it) }
+        log.info("Emby 剧照已推送 itemId={} 番号={} 共 {} 张", itemId, number, images.size)
+        return EmbyImagePushResult(pushed = images.size)
+    }
+
+    private fun normalizeNumber(req: EmbyImagePushRequest): String =
+        NumberRecognizer.normalize(req.number.trim()) ?: req.number.trim()
 
     /**
      * 按逐字段选择组装 EmbyMetadataUpdate（不自动翻译，保存输入框当前内容）：

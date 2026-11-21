@@ -1008,6 +1008,58 @@ paths:
         '404':
           description: 条目无主图
 
+  /api/v1/emby/items/{id}/images/primary:
+    post:
+      tags: [emby]
+      operationId: pushEmbyPrimaryImage
+      summary: 推送封面到 Emby（Primary 图，重新刮削界面「推送封面」）
+      description: |
+        预览提供的封面 URL 优先下载（横版全封套扫描自动裁为竖版，FC2 番号不裁）；
+        失败或未提供时回退本地图片缓存 data/images/{番号}/poster.jpg。
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EmbyImagePushRequest'
+      responses:
+        '200':
+          description: 推送结果
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmbyImagePushResult'
+        '400':
+          description: 无法获取封面（URL 下载失败且本地无缓存）
+
+  /api/v1/emby/items/{id}/images/backdrops:
+    post:
+      tags: [emby]
+      operationId: pushEmbyBackdropImages
+      summary: 推送剧照到 Emby（Backdrop，重新刮削界面「推送剧照」）
+      description: |
+        先清空条目已有 Backdrop 再逐张上传，保证重复推送不叠加。
+        剧照来源：预览提供的 previewUrls（下载失败的跳过）→ 回退本地图片缓存 preview1..N.jpg。
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EmbyImagePushRequest'
+      responses:
+        '200':
+          description: 推送结果（pushed 为上传张数）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmbyImagePushResult'
+        '400':
+          description: 无法获取剧照（URL 下载失败且本地无缓存）
+
 components:
   parameters:
     Page:
@@ -1933,6 +1985,32 @@ components:
         premiereDate: { type: string, nullable: true }
         path: { type: string, nullable: true }
         hasImage: { type: boolean, description: 是否有主图（封面走代理接口） }
+
+    EmbyImagePushRequest:
+      type: object
+      description: 图片推送请求（推送封面/推送剧照）
+      properties:
+        number:
+          type: string
+          description: 番号（用于本地图片缓存回退与 FC2 裁剪排除）
+        coverUrl:
+          type: string
+          nullable: true
+          description: 封面 URL（重新刮削预览的默认来源值）；省略时回退本地缓存
+        previewUrls:
+          type: array
+          items: { type: string }
+          nullable: true
+          description: 剧照 URL 列表（重新刮削预览的默认来源值）；省略时回退本地缓存
+      required: [number]
+
+    EmbyImagePushResult:
+      type: object
+      description: 图片推送结果
+      properties:
+        pushed:
+          type: integer
+          description: 成功上传到 Emby 的图片数
 
     EmbyPage:
       type: object

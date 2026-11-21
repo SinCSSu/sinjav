@@ -412,3 +412,15 @@ export interface EmbyRescrapeApplyRequest {
   number: string
   fields: Record<string, ScrapeFieldChoice>
 }
+
+/** 图片推送请求（重新刮削界面「推送封面/推送剧照」）：URL 省略时后端回退本地图片缓存 */
+export interface EmbyImagePushRequest {
+  number: string
+  coverUrl?: string
+  previewUrls?: string[]
+}
+
+/** 图片推送结果 */
+export interface EmbyImagePushResult {
+  pushed: number
+}
