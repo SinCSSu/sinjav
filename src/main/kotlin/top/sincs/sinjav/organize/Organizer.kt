@@ -63,6 +63,7 @@ class Organizer(
     private val http: HttpClientFactory,
     private val movies: MovieRepository,
     private val fileRecords: FileRecordRepository,
+    private val coverCropper: top.sincs.sinjav.scraper.CoverCropper,
     private val props: AppProperties,
 ) {
 
@@ -255,10 +256,12 @@ class Organizer(
         val ref = movie.coverUrl
         // move 模式下封面也可能已存在于源目录，但直接重新下载最简单可靠
         movie.coverUrl?.let { url ->
-            runCatching { Files.write(subDir.resolve("poster.jpg"), http.download(url, referer = ref, source = movie.source)) }
-                .onFailure { log.warn("下载封面失败 {}: {}", url, it.message) }
-            runCatching { Files.write(subDir.resolve("fanart.jpg"), http.download(url, referer = ref, source = movie.source)) }
-                .onFailure { log.warn("下载 fanart 失败 {}: {}", url, it.message) }
+            runCatching {
+                // poster 竖版：横版全封套扫描裁取左侧前封面（FC2 不裁）；fanart 保留横版原图（作为背景图）
+                val bytes = http.download(url, referer = ref, source = movie.source)
+                Files.write(subDir.resolve("poster.jpg"), coverCropper.cropFrontCover(movie.number, bytes))
+                Files.write(subDir.resolve("fanart.jpg"), bytes)
+            }.onFailure { log.warn("下载封面失败 {}: {}", url, it.message) }
         }
         movie.previewUrls.forEachIndexed { i, url ->
             runCatching { Files.write(subDir.resolve("preview${i + 1}.jpg"), http.download(url, referer = ref, source = movie.source)) }

@@ -32,7 +32,7 @@ class ImageStoreTest {
                 images.download = true
                 images.dir = Files.createTempDirectory("sinjav-imgs").toString()
             }
-            val store = ImageStore(HttpClientFactory(props), props)
+            val store = ImageStore(HttpClientFactory(props), props, CoverCropper())
             val base = "http://127.0.0.1:${server.address.port}"
             store.downloadAll("ABP-123", coverUrl = "$base/pics/cover/a.jpg", previewUrls = listOf("$base/pics/1.jpg", "$base/pics/2.jpg"))
 
@@ -51,7 +51,7 @@ class ImageStoreTest {
             images.download = false
             images.dir = Files.createTempDirectory("sinjav-imgs-off").toString()
         }
-        val store = ImageStore(HttpClientFactory(props), props)
+        val store = ImageStore(HttpClientFactory(props), props, CoverCropper())
         store.downloadAll("ABP-123", coverUrl = "http://127.0.0.1:1/a.jpg", previewUrls = emptyList())
         assertFalse(Files.exists(java.nio.file.Path.of(props.images.dir).resolve("ABP-123")))
     }
@@ -64,7 +64,7 @@ class ImageStoreTest {
             images.download = true
             images.dir = Files.createTempDirectory("sinjav-imgs-fail").toString()
         }
-        val store = ImageStore(HttpClientFactory(props), props)
+        val store = ImageStore(HttpClientFactory(props), props, CoverCropper())
         // 无人监听的端口 → 下载失败，但不应抛异常
         store.downloadAll("ABP-123", coverUrl = "http://127.0.0.1:1/a.jpg", previewUrls = listOf("http://127.0.0.1:1/b.jpg"))
         val dir = java.nio.file.Path.of(props.images.dir).resolve("ABP-123")

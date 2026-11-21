@@ -15,6 +15,7 @@ import java.nio.file.Path
 class ImageStore(
     private val http: HttpClientFactory,
     private val props: AppProperties,
+    private val coverCropper: CoverCropper,
 ) {
 
     /** 每日 04:00 自动清理过期图片缓存（TTL 在设置页配置，0 = 永久保留） */
@@ -44,8 +45,11 @@ class ImageStore(
             .onFailure { log.warn("创建图片目录失败 {}: {}", dir, it.message); return }
 
         coverUrl?.let { url ->
-            runCatching { Files.write(dir.resolve("poster.jpg"), http.download(url, source = coverSource ?: source)) }
-                .onFailure { log.warn("下载封面到本地失败 {}: {}", url, it.message) }
+            runCatching {
+                // 横版全封套扫描裁取左侧前封面 → 竖版 poster（FC2 单图封面不裁，见 CoverCropper）
+                val bytes = coverCropper.cropFrontCover(number, http.download(url, source = coverSource ?: source))
+                Files.write(dir.resolve("poster.jpg"), bytes)
+            }.onFailure { log.warn("下载封面到本地失败 {}: {}", url, it.message) }
         }
         previewUrls.forEachIndexed { i, url ->
             runCatching { Files.write(dir.resolve("preview${i + 1}.jpg"), http.download(url, source = previewSource ?: source)) }

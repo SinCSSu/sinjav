@@ -201,6 +201,14 @@ class FileRecordRepository(private val jdbc: NamedParameterJdbcTemplate) {
         )
     }
 
+    /** 应用启动恢复：容器重建后已无任何执行线程，全部「整理中」记录复位为待整理。返回复位条数 */
+    fun resetAllOrganizingToPending(): Int =
+        jdbc.update(
+            "UPDATE file_records SET organize_status = 'pending', updated_at = CURRENT_TIMESTAMP " +
+                "WHERE organize_status = 'organizing'",
+            emptyMap<String, Any>(),
+        )
+
     /**
      * 重整已整理记录前的重置：
      * - move 整理的记录：源文件已在旧目标位置，将 source_path 指向旧 target_path

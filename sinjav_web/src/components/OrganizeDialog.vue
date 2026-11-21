@@ -87,6 +87,7 @@
           </div>
         </div>
 
+        <div class="lower-groups">
         <el-collapse v-model="existsOpen" class="organized-collapse">
           <el-collapse-item name="exists">
             <template #title>
@@ -206,6 +207,7 @@
             </div>
           </el-collapse-item>
         </el-collapse>
+        </div>
       </section>
 
       <!-- 右侧列：预览 -->
@@ -674,11 +676,15 @@ async function organizeAll() {
   line-height: 1.5;
   margin-top: 4px;
 }
+/* 待整理列表下方的折叠分组（已存在/整理中/已整理）共用一个有界滚动容器，
+   整体限高并内部滚动，避免内容溢出叠压到待整理列表上 */
+.lower-groups {
+  flex-shrink: 0;
+  max-height: 50%;
+  overflow-y: auto;
+}
 .organized-collapse {
   flex-shrink: 0;
-  max-height: 45%;
-  display: flex;
-  flex-direction: column;
 }
 .organized-collapse :deep(.el-collapse-item__wrap) {
   max-height: 320px;

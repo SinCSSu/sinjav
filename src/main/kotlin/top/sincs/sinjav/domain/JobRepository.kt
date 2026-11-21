@@ -102,5 +102,12 @@ class JobRepository(private val jdbc: NamedParameterJdbcTemplate) {
             mapOf("t" to type), Long::class.java,
         ) ?: 0L) > 0
 
+    /** 全部运行中的任务（应用启动恢复用：容器重建后这些任务已不存在于内存） */
+    fun findRunning(): List<Job> =
+        jdbc.query(
+            "SELECT * FROM jobs WHERE status = 'running' ORDER BY id",
+            emptyMap<String, Any>(), JOB_MAPPER,
+        )
+
     private fun jsonEscape(s: String): String = s.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n")
 }
