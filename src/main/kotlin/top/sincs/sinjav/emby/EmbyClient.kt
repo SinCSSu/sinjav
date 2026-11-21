@@ -8,6 +8,7 @@ import top.sincs.sinjav.api.dto.EmbyLibraryDto
 import top.sincs.sinjav.api.dto.EmbyMetadataUpdate
 import top.sincs.sinjav.api.dto.EmbyPageDto
 import top.sincs.sinjav.config.AppProperties
+import top.sincs.sinjav.scraper.ImageFormats
 import tools.jackson.databind.JsonNode
 import tools.jackson.databind.ObjectMapper
 import tools.jackson.databind.node.ObjectNode
@@ -106,17 +107,23 @@ class EmbyClient(
         return mapper.readTree(String(resp.body(), Charsets.UTF_8))
     }
 
-    /** 图片二进制请求（上传封面/剧照）：Content-Type 为图片类型，body 为原始图片字节 */
+    /**
+     * 图片上传请求：Emby 的图片上传接口要求请求体为图片字节的 **Base-64 编码字符串**
+     * （与 Jellyfin 的原始二进制不同），Content-Type 为图片类型。
+     */
     private fun exchangeImage(method: String, path: String, contentType: String, body: ByteArray): HttpResponse<ByteArray> {
         val url = buildString { append(baseUrl()); append(path) }
+        val payload = java.util.Base64.getEncoder().encodeToString(body)
         val builder = HttpRequest.newBuilder(URI.create(url))
             .timeout(Duration.ofMillis(props.scraper.timeoutMs))
             .header("X-Emby-Token", props.emby.apiKey.trim())
             .header("Content-Type", contentType)
-            .method(method, HttpRequest.BodyPublishers.ofByteArray(body))
+            .method(method, HttpRequest.BodyPublishers.ofString(payload))
         val resp = client().send(builder.build(), HttpResponse.BodyHandlers.ofByteArray())
         if (resp.statusCode() >= 400) {
-            throw EmbyException(resp.statusCode(), "Emby 请求失败: HTTP ${resp.statusCode()} $path")
+            // 带上 Emby 的错误响应体（如「image is not supported」），便于定位 500 的真实原因
+            val detail = String(resp.body(), Charsets.UTF_8).take(300).trim()
+            throw EmbyException(resp.statusCode(), "Emby 请求失败: HTTP ${resp.statusCode()} $path" + detail.ifBlank { "" })
         }
         return resp
     }
@@ -233,17 +240,18 @@ class EmbyClient(
 
     /**
      * 上传图片：POST /Items/{Id}/Images/{imageType}（不带索引时追加到对应类型，Backdrop 即新增一张背景图）。
-     * 带索引（index >= 0）时写入指定位置。
+     * 带索引（index >= 0）时写入指定位置。Content-Type 按字节魔数自动判定（调用方可显式覆盖）。
      */
-    fun uploadImage(id: String, imageType: String, bytes: ByteArray, contentType: String = "image/jpeg", index: Int? = null) {
+    fun uploadImage(id: String, imageType: String, bytes: ByteArray, contentType: String? = null, index: Int? = null) {
+        val ct = contentType ?: ImageFormats.detect(bytes)
+            ?: throw IllegalArgumentException("无法识别图片格式，拒绝上传到 Emby（可能是损坏或未知的图片数据）")
         val path = buildString {
             append("/Items/").append(urlEncode(id)).append("/Images/").append(urlEncode(imageType))
             if (index != null) append("/").append(index)
         }
-        val resp = exchangeImage("POST", path, contentType, bytes)
-        log.info("Emby 图片已上传 itemId={} type={} index={} bytes={} -> HTTP {}", id, imageType, index, bytes.size, resp.statusCode())
+        val resp = exchangeImage("POST", path, ct, bytes)
+        log.info("Emby 图片已上传 itemId={} type={} index={} contentType={} bytes={} -> HTTP {}", id, imageType, index, ct, bytes.size, resp.statusCode())
     }
-
     /** 删除指定索引的图片：DELETE /Items/{Id}/Images/{imageType}/{index} */
     fun deleteImage(id: String, imageType: String, index: Int) {
         exchange("DELETE", "/Items/${urlEncode(id)}/Images/${urlEncode(imageType)}/$index")

@@ -25,15 +25,15 @@ class CoverCropperTest {
     }
 
     @Test
-    fun `横版封面裁取左侧竖版区域`() {
+    fun `横版封套右对齐裁取前封面（JavSP 规则）`() {
         val cropper = CoverCropper()
-        // 600×200 横版：左红右蓝
-        val cropped = cropper.cropFrontCover("ABP-123", makeJpeg(600, 200, 0xFF0000, 0x0000FF))
+        // 600×200 横版：左=白底封底（条码），右=深色前封面；posterW = 200/1.42 ≈ 140，裁右对齐区域
+        val cropped = cropper.cropFrontCover("ABP-123", makeJpeg(600, 200, 0xFFFFFF, 0x303030))
         val img = ImageIO.read(ByteArrayInputStream(cropped))
-        assertTrue(img != null && img.width == 300 && img.height == 200, "应裁为左半 300×200")
-        // JPEG 有色度压缩，用容差断言：中心像素应接近红色而非蓝色
-        val rgb = img!!.getRGB(150, 100)
-        assertTrue((rgb shr 16) and 0xFF >= 0xF0 && (rgb and 0xFF) <= 0x10, "裁剪区域应为左侧前封面（红色），实际=$rgb")
+        assertTrue(img != null && img.width == 140 && img.height == 200, "应裁为右对齐 140×200，实际 ${img?.width}×${img?.height}")
+        // JPEG 有色度压缩，用容差断言：中心像素应接近深色（前封面）而非白色（封底）
+        val rgb = img!!.getRGB(70, 100)
+        assertTrue((rgb shr 16) and 0xFF <= 0x60, "应裁取右侧前封面（深色），实际=$rgb")
     }
 
     @Test
@@ -60,5 +60,43 @@ class CoverCropperTest {
         val cropper = CoverCropper()
         val junk = byteArrayOf(0x01, 0x02, 0x03)
         assertEquals(junk.toList(), cropper.cropFrontCover("ABP-123", junk).toList())
+    }
+
+    @Test
+    fun `归一化 PNG 转 JPEG 且 JPEG 原样`() {
+        val cropper = CoverCropper()
+        // PNG → JPEG
+        val png = ByteArrayOutputStream().apply {
+            val img = BufferedImage(200, 300, BufferedImage.TYPE_INT_RGB)
+            ImageIO.write(img, "png", this)
+        }.toByteArray()
+        assertEquals("image/png", ImageFormats.detect(png))
+        val asJpeg = cropper.normalizeJpeg(png)
+        assertEquals("image/jpeg", ImageFormats.detect(asJpeg))
+        // JPEG 原样返回
+        val jpeg = makeJpeg(300, 200, 0xFF0000, 0x0000FF)
+        assertEquals("image/jpeg", ImageFormats.detect(jpeg))
+        assertEquals(jpeg.toList(), cropper.normalizeJpeg(jpeg).toList())
+    }
+
+    @Test
+    fun `WebP 与 AVIF 魔数被识别且归一化抛出可读错误`() {
+        val cropper = CoverCropper()
+        // WEBP：RIFF....WEBP
+        val webp = ByteArray(32).also {
+            it[0] = 'R'.code.toByte(); it[1] = 'I'.code.toByte(); it[2] = 'F'.code.toByte(); it[3] = 'F'.code.toByte()
+            it[8] = 'W'.code.toByte(); it[9] = 'E'.code.toByte(); it[10] = 'B'.code.toByte(); it[11] = 'P'.code.toByte()
+        }
+        assertEquals("image/webp", ImageFormats.detect(webp))
+        assertTrue(ImageFormats.isEmbyUnsupported(ImageFormats.detect(webp)))
+        val ex = runCatching { cropper.normalizeJpeg(webp) }.exceptionOrNull()
+        assertTrue(ex is IllegalArgumentException && (ex.message ?: "").contains("WebP"), "应抛出含 WebP 的可读错误，实际=${ex?.message}")
+        // AVIF：....ftyp
+        val avif = ByteArray(32).also {
+            it[4] = 'f'.code.toByte(); it[5] = 't'.code.toByte(); it[6] = 'y'.code.toByte(); it[7] = 'p'.code.toByte()
+        }
+        assertEquals("image/avif", ImageFormats.detect(avif))
+        assertTrue(ImageFormats.isEmbyUnsupported(ImageFormats.detect(avif)))
+        assertTrue(runCatching { cropper.normalizeJpeg(avif) }.exceptionOrNull() != null)
     }
 }

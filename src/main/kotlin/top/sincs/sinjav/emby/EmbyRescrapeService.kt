@@ -124,7 +124,9 @@ class EmbyRescrapeService(
             ?: throw IllegalArgumentException(
                 "无法获取封面：封面 URL 下载失败或未提供，且本地无 $number 的图片缓存（可先在影片库刮削一次）",
             )
-        emby.uploadImage(itemId, "Primary", bytes)
+        // 归一化为 JPEG：WebP/AVIF 等格式 Emby 上传会 500（normalizeJpeg 抛出可读错误）
+        val normalized = coverCropper.normalizeJpeg(bytes)
+        emby.uploadImage(itemId, "Primary", normalized)
         log.info("Emby 封面已推送 itemId={} 番号={} bytes={}", itemId, number, bytes.size)
         return EmbyImagePushResult(pushed = 1)
     }
@@ -150,14 +152,22 @@ class EmbyRescrapeService(
                 "无法获取剧照：剧照 URL 下载失败或未提供，且本地无 $number 的剧照缓存（可先在影片库刮削一次）",
             )
         }
+        // 先归一化为 JPEG（WebP/AVIF 等单张跳过，不影响其余上传；全部不支持时直接报错，不动 Emby 数据）
+        val uploaded = images.mapNotNull { bytes ->
+            runCatching { coverCropper.normalizeJpeg(bytes) }
+                .onFailure { log.warn("剧照格式不支持上传，已跳过: {}", it.message) }
+                .getOrNull()
+        }.ifEmpty {
+            throw IllegalArgumentException("全部剧照均为 Emby 不支持的格式（WebP/AVIF 等），未推送任何图片")
+        }
         // 从尾到头删除已有 Backdrop（删除会令后续索引前移，倒序删除避免漏删）
         for (i in emby.backdropCount(itemId) - 1 downTo 0) {
             runCatching { emby.deleteImage(itemId, "Backdrop", i) }
                 .onFailure { log.warn("删除 Emby 旧背景图失败 index={}: {}", i, it.message) }
         }
-        images.forEach { emby.uploadImage(itemId, "Backdrop", it) }
-        log.info("Emby 剧照已推送 itemId={} 番号={} 共 {} 张", itemId, number, images.size)
-        return EmbyImagePushResult(pushed = images.size)
+        uploaded.forEach { emby.uploadImage(itemId, "Backdrop", it) }
+        log.info("Emby 剧照已推送 itemId={} 番号={} 共 {} 张", itemId, number, uploaded.size)
+        return EmbyImagePushResult(pushed = uploaded.size)
     }
 
     private fun normalizeNumber(req: EmbyImagePushRequest): String =
