@@ -99,6 +99,8 @@ data class OrganizeRequest(
     val conflictPolicy: String? = null,
     val generateNfo: Boolean? = null,
     val downloadImages: Boolean? = null,
+    /** 只整理视频：仅转移视频文件，不生成 nfo/图片（适配 Emby 已存在媒体的多分辨率入库） */
+    val videoOnly: Boolean? = null,
     val numbers: List<String>? = null,
     /** 按文件记录逐条整理（可覆盖目标路径/整理方式），优先于 numbers */
     val items: List<OrganizeItemRequest>? = null,
@@ -124,6 +126,8 @@ data class OrganizePreviewRequest(
     val mode: String,
     val namingTemplate: String? = null,
     val conflictPolicy: String? = null,
+    /** 只整理视频：仅计算视频目标路径，不生成 nfo/图片 */
+    val videoOnly: Boolean? = null,
 )
 
 data class PipelineRequest(
@@ -214,12 +218,14 @@ data class MovieSummaryDto(
     val number: String, val title: String?, val titleOrig: String?, val releaseDate: String?, val maker: String?,
     val actresses: List<String>, val coverUrl: String?, val status: String,
     val plot: String? = null,
+    /** 该番号已存在于 Emby 媒体库（依据最近一次「同步 Emby 库」快照） */
+    val embyExists: Boolean = false,
 ) {
     companion object {
-        fun of(m: Movie, actresses: List<String>) = MovieSummaryDto(
+        fun of(m: Movie, actresses: List<String>, embyExists: Boolean = false) = MovieSummaryDto(
             number = m.number, title = m.title, titleOrig = m.titleOrig, releaseDate = m.releaseDate?.toString(),
             maker = m.maker, actresses = actresses, coverUrl = m.coverUrl, status = m.status,
-            plot = m.plot,
+            plot = m.plot, embyExists = embyExists,
         )
     }
 }
@@ -232,6 +238,8 @@ data class MovieDetailDto(
     val actresses: List<String>, val genres: List<String>,
     val scrapedAt: String?, val createdAt: String, val updatedAt: String,
     val fileRecords: List<FileRecordDto>,
+    /** 该番号已存在于 Emby 媒体库（依据最近一次「同步 Emby 库」快照） */
+    val embyExists: Boolean = false,
 )
 
 data class FileRecordDto(

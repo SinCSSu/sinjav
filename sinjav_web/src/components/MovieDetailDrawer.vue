@@ -139,6 +139,7 @@
               </el-tag>
             </template>
           </el-table-column>
+          <el-table-column prop="sourcePath" label="本地路径" min-width="180" show-overflow-tooltip />
           <el-table-column prop="targetPath" label="目标路径" min-width="140" show-overflow-tooltip>
             <template #default="{ row }">{{ row.targetPath ?? '-' }}</template>
           </el-table-column>

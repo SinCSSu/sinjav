@@ -29,6 +29,7 @@ import top.sincs.sinjav.domain.MovieRepository
 class MovieController(
     private val movies: MovieRepository,
     private val fileRecords: FileRecordRepository,
+    private val embyItems: top.sincs.sinjav.domain.EmbyItemRepository,
     private val imageStore: top.sincs.sinjav.scraper.ImageStore,
 ) {
 
@@ -45,7 +46,11 @@ class MovieController(
         val pg = page.coerceAtLeast(1)
         val sz = size.coerceIn(1, 200)
         val p = movies.list(pg, sz, keyword, status, sort, order)
-        return PageDto.of(pg, sz, p.total, p.items.map { MovieSummaryDto.of(it, p.actressesByMovie[it.id] ?: emptyList()) })
+        val embyNumbers = embyItems.findExistingNumbers(p.items.map { it.number })
+        return PageDto.of(
+            pg, sz, p.total,
+            p.items.map { MovieSummaryDto.of(it, p.actressesByMovie[it.id] ?: emptyList(), it.number in embyNumbers) },
+        )
     }
 
     @GetMapping("/movies/{number}")
@@ -62,6 +67,7 @@ class MovieController(
                 scrapedAt = m.scrapedAt?.toString(), createdAt = m.createdAt.toString(),
                 updatedAt = m.updatedAt.toString(),
                 fileRecords = fileRecords.findByNumber(m.number).map { FileRecordDto.of(it) },
+                embyExists = embyItems.existsByNumber(m.number),
             ),
         )
     }
@@ -101,7 +107,7 @@ class FileRecordController(private val fileRecords: FileRecordRepository) {
         return PageDto.of(pg, sz, p.total, p.items.map { FileRecordDto.of(it) })
     }
 
-    /** 整理弹窗列表：按 group（pending/organized）分组返回文件记录（联出影片标题/封面） */
+    /** 整理弹窗列表：按 group（pending/organizing/organized/exists）分组返回文件记录（联出影片标题/封面） */
     @GetMapping("/organize/records")
     fun organizeRecords(
         @RequestParam(defaultValue = "1") page: Int,
@@ -109,7 +115,9 @@ class FileRecordController(private val fileRecords: FileRecordRepository) {
         @RequestParam group: String,
         @RequestParam(required = false) keyword: String?,
     ): PageDto<OrganizeRecordDto> {
-        require(group in setOf("pending", "organized")) { "group 必须为 pending/organized" }
+        require(group in setOf("pending", "organizing", "organized", "exists")) {
+            "group 必须为 pending/organizing/organized/exists"
+        }
         val pg = page.coerceAtLeast(1)
         val sz = size.coerceIn(1, 500)
         val (items, total) = fileRecords.listForOrganize(pg, sz, group, keyword)

@@ -190,8 +190,8 @@ export const api = {
   previewOrganize(body: OrganizePreviewRequest) {
     return post<OrganizePreviewResponse>('/organize/preview', body)
   },
-  /** 整理弹窗文件记录列表（group: pending | organizing | organized） */
-  listOrganizeRecords(group: 'pending' | 'organizing' | 'organized', page = 1, size = 100, keyword?: string) {
+  /** 整理弹窗文件记录列表（group: pending | organizing | organized | exists） */
+  listOrganizeRecords(group: 'pending' | 'organizing' | 'organized' | 'exists', page = 1, size = 100, keyword?: string) {
     return request<Paged<OrganizeRecordItem>>(
       `/organize/records${qs({ group, page, size, keyword })}`,
     )
@@ -285,6 +285,10 @@ export const api = {
   // Emby（实时代理，不落库）
   getEmbyStatus() {
     return request<{ serverName: string; version: string }>('/emby/status')
+  },
+  /** 同步 Emby 媒体库：识别番号写入本地快照（用于「已存在于emby」标记与「已存在」分组） */
+  syncEmby() {
+    return post<{ scanned: number; matched: number; syncedAt: string }>('/emby/sync', {})
   },
   listEmbyLibraries() {
     return request<EmbyLibrary[]>('/emby/libraries')

@@ -26,6 +26,16 @@ data class EmbyPageDto(
     val items: List<EmbyItemSummaryDto>,
 )
 
+/** Emby 媒体库同步结果（POST /emby/sync，同步执行后全量替换 emby_items 快照） */
+data class EmbySyncResultDto(
+    /** 扫描的 Emby 条目总数 */
+    val scanned: Int,
+    /** 成功识别出番号的条目数 */
+    val matched: Int,
+    /** 快照时间 */
+    val syncedAt: String,
+)
+
 data class EmbyItemDetailDto(
     val id: String,
     val name: String,

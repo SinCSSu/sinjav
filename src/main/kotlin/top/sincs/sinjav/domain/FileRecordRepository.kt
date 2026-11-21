@@ -74,7 +74,11 @@ class FileRecordRepository(private val jdbc: NamedParameterJdbcTemplate) {
         )
     }
 
-    /** 按整理状态分组列出文件记录（已联出影片标题/封面），keyword 模糊匹配番号/文件名/标题 */
+    /**
+     * 按整理状态分组列出文件记录（已联出影片标题/封面），keyword 模糊匹配番号/文件名/标题。
+     * group=exists 为「已存在」分组：emby_items 快照中已有该番号、但本地尚未整理的视频；
+     * group=pending 时排除这些番号，保证分组互斥。
+     */
     fun listForOrganize(page: Int, size: Int, group: String, keyword: String?): Pair<List<OrganizeRecordRow>, Long> {
         val organizeStatus = when (group) {
             "organized" -> "organized"
@@ -82,6 +86,11 @@ class FileRecordRepository(private val jdbc: NamedParameterJdbcTemplate) {
             else -> "pending"
         }
         val conditions = mutableListOf("fr.recognize_status = 'recognized'", "fr.organize_status = :os")
+        if (group == "exists") {
+            conditions += "EXISTS (SELECT 1 FROM emby_items e WHERE e.number = fr.number)"
+        } else if (group == "pending") {
+            conditions += "NOT EXISTS (SELECT 1 FROM emby_items e WHERE e.number = fr.number)"
+        }
         val params = mutableMapOf<String, Any>("os" to organizeStatus)
         if (!keyword.isNullOrBlank()) {
             conditions +=

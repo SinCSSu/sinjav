@@ -42,3 +42,5 @@ out/
 /data/
 /javtest/
 /src/main/resources/ca.crt
+# build:boot 生成的前端产物，不入库（Docker 构建时由 web 阶段生成）
+/src/main/resources/static/

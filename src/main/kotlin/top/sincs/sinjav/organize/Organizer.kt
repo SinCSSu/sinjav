@@ -24,6 +24,8 @@ data class OrganizeParams(
     val conflictPolicy: String? = null,
     val generateNfo: Boolean? = null,
     val downloadImages: Boolean? = null,
+    /** 只整理视频：仅转移视频文件，不写 nfo/图片（适配 Emby 已存在媒体的多分辨率入库） */
+    val videoOnly: Boolean? = null,
     val numbers: List<String>? = null,
     /** 按文件记录逐条整理（可覆盖目标路径/整理方式），优先于 numbers */
     val items: List<OrganizeItem>? = null,
@@ -137,8 +139,10 @@ class Organizer(
             val subDir = target.parent ?: targetRoot
 
             val placed = strategy.place(source, target, conflict)
-            val generateNfo = params.generateNfo ?: props.organize.generateNfo
-            val downloadImages = params.downloadImages ?: props.organize.downloadImages
+            // 只整理视频：优先级最高，跳过 nfo/图片（Emby 已有该媒体的元数据，仅需补充视频文件）
+            val videoOnly = params.videoOnly ?: false
+            val generateNfo = !videoOnly && (params.generateNfo ?: props.organize.generateNfo)
+            val downloadImages = !videoOnly && (params.downloadImages ?: props.organize.downloadImages)
 
             if (generateNfo) {
                 nfoWriter.write(subDir, movie, movies.findActresses(movie.id), movies.findGenres(movie.id))

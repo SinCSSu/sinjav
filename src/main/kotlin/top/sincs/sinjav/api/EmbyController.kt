@@ -16,14 +16,20 @@ import top.sincs.sinjav.api.dto.EmbyMetadataUpdate
 import top.sincs.sinjav.api.dto.EmbyRescrapeApplyRequest
 import top.sincs.sinjav.api.dto.EmbyRescrapePreviewDto
 import top.sincs.sinjav.api.dto.EmbyRescrapePreviewRequest
+import top.sincs.sinjav.api.dto.EmbySyncResultDto
 import top.sincs.sinjav.emby.EmbyClient
 import top.sincs.sinjav.emby.EmbyException
 import top.sincs.sinjav.emby.EmbyRescrapeService
+import top.sincs.sinjav.emby.EmbySyncService
 
 /** Emby 集成：媒体库/条目只读代理 + 元数据编辑 + 本地刮削回写（基础实现，实时代理不落库） */
 @RestController
 @RequestMapping("/api/v1")
-class EmbyController(private val emby: EmbyClient, private val rescrape: EmbyRescrapeService) {
+class EmbyController(
+    private val emby: EmbyClient,
+    private val rescrape: EmbyRescrapeService,
+    private val sync: EmbySyncService,
+) {
 
     /** 测试连接：返回 Emby 服务器名称与版本 */
     @GetMapping("/emby/status")
@@ -37,6 +43,10 @@ class EmbyController(private val emby: EmbyClient, private val rescrape: EmbyRes
 
     @GetMapping("/emby/libraries")
     fun libraries(): List<EmbyLibraryDto> = emby.listLibraries()
+
+    /** 同步 Emby 媒体库：遍历全部电影库识别番号，全量替换本地 emby_items 快照（同步执行） */
+    @PostMapping("/emby/sync")
+    fun syncLibrary(): EmbySyncResultDto = sync.sync()
 
     @GetMapping("/emby/items")
     fun items(

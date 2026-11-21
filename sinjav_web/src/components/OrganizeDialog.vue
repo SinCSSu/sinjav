@@ -35,6 +35,10 @@
               <el-option label="重命名" value="rename" />
             </el-select>
           </el-form-item>
+          <el-form-item label="只整理视频">
+            <el-switch v-model="videoOnly" />
+            <div class="param-hint">开启后仅转移视频文件，不生成 nfo/图片（适配 Emby 已有该媒体的多分辨率入库）</div>
+          </el-form-item>
         </el-form>
       </aside>
 
@@ -71,6 +75,7 @@
                 <div class="num">{{ r.number || '未识别' }}</div>
                 <div class="title" :title="r.title || r.fileName">{{ r.title || r.fileName }}</div>
                 <div class="path" :title="r.fileName">{{ r.fileName }}</div>
+                <div class="path" :title="r.sourcePath">源：{{ r.sourcePath }}</div>
               </div>
             </label>
             <div v-if="pendingRecords.length < pendingTotal" class="load-more">
@@ -81,6 +86,53 @@
             <el-empty v-if="!loadingPending && !pendingRecords.length" description="暂无待整理文件" :image-size="60" />
           </div>
         </div>
+
+        <el-collapse v-model="existsOpen" class="organized-collapse">
+          <el-collapse-item name="exists">
+            <template #title>
+              <span class="group-head-text">已存在（{{ existsTotal }}）—— Emby 已有该番号、本地尚未整理</span>
+            </template>
+            <div v-loading="loadingExists" class="card-list card-list-organized">
+              <label v-for="r in existsRecords" :key="r.recordId" class="media-card">
+                <el-checkbox
+                  :model-value="selected.has(r.recordId)"
+                  @change="toggleSelect(r.recordId)"
+                  @click.stop
+                />
+                <div class="cover">
+                  <img
+                    v-if="r.coverUrl"
+                    :src="localImg(r.number || '', 'poster.jpg')"
+                    loading="lazy"
+                    alt=""
+                    @error="imgFallback($event, imgProxy(r.coverUrl))"
+                  />
+                  <div v-else class="cover-placeholder">{{ r.number || '?' }}</div>
+                </div>
+                <div class="info">
+                  <div class="num">{{ r.number || '未识别' }}</div>
+                  <div class="title" :title="r.title || r.fileName">{{ r.title || r.fileName }}</div>
+                  <div class="path" :title="r.fileName">
+                    <el-tag size="small" type="info" effect="dark">Emby已有</el-tag>
+                    {{ r.fileName }}
+                  </div>
+                  <div class="path" :title="r.sourcePath">源：{{ r.sourcePath }}</div>
+                </div>
+              </label>
+              <div v-if="existsLoaded && existsRecords.length < existsTotal" class="load-more">
+                <el-button link type="primary" :loading="loadingExists" @click="loadExists(false)">
+                  加载更多
+                </el-button>
+              </div>
+              <el-empty
+                v-if="existsLoaded && !existsRecords.length"
+                description="没有已存在于 Emby 的待整理文件（先在影片库点击「同步 Emby」）"
+                :image-size="60"
+              />
+              <div v-if="!existsLoaded" class="load-more">展开后加载</div>
+            </div>
+          </el-collapse-item>
+        </el-collapse>
 
         <el-collapse v-model="organizingOpen" class="organized-collapse">
           <el-collapse-item name="organizing">
@@ -243,6 +295,7 @@ const targetDir = ref('')
 const mode = ref<LinkMode | ''>('')
 const namingTemplate = ref('')
 const conflictPolicy = ref<'' | 'skip' | 'overwrite' | 'rename'>('')
+const videoOnly = ref(false)
 
 // 中列：媒体列表
 const pendingRecords = ref<OrganizeRecordItem[]>([])
@@ -260,6 +313,13 @@ const organizingTotal = ref(0)
 const organizingLoaded = ref(false)
 const loadingOrganizing = ref(false)
 const organizingOpen = ref<string[]>([])
+// 已存在分组：Emby 已有该番号、本地尚未整理的文件记录
+const existsRecords = ref<OrganizeRecordItem[]>([])
+const existsTotal = ref(0)
+const existsPage = ref(0)
+const existsLoaded = ref(false)
+const loadingExists = ref(false)
+const existsOpen = ref<string[]>([])
 const selected = ref(new Set<number>())
 
 // 右列：预览
@@ -267,7 +327,7 @@ const previews = ref<OrganizePreviewItem[]>([])
 const previewing = ref(false)
 const submitting = ref(false)
 
-const allRecords = computed(() => [...pendingRecords.value, ...organizedRecords.value])
+const allRecords = computed(() => [...pendingRecords.value, ...existsRecords.value, ...organizedRecords.value])
 const recordMap = computed(() => new Map(allRecords.value.map((r) => [r.recordId, r])))
 
 const pendingAllSelected = computed(
@@ -280,18 +340,24 @@ async function onOpen() {
   mode.value = ''
   namingTemplate.value = ''
   conflictPolicy.value = ''
+  videoOnly.value = false
   selected.value = new Set()
   previews.value = []
   pendingRecords.value = []
   organizedRecords.value = []
   organizingRecords.value = []
+  existsRecords.value = []
   organizedTotal.value = 0
   organizingTotal.value = 0
+  existsTotal.value = 0
   organizingLoaded.value = false
+  existsLoaded.value = false
   organizedPage.value = 0
+  existsPage.value = 0
   pendingPage.value = 0
   organizedLoaded.value = false
   organizedOpen.value = []
+  existsOpen.value = []
   await loadPending(true)
   // 快捷入口：按番号预选该影片的待整理文件记录
   const preset = props.presetNumbers ?? []
@@ -302,10 +368,14 @@ async function onOpen() {
         .map((r) => r.recordId),
     )
   }
-  // 已整理总数用于折叠标题展示（只取 total）
+  // 已整理/已存在总数用于折叠标题展示（只取 total）
   try {
-    const p = await api.listOrganizeRecords('organized', 1, 1)
+    const [p, e] = await Promise.all([
+      api.listOrganizeRecords('organized', 1, 1),
+      api.listOrganizeRecords('exists', 1, 1),
+    ])
     organizedTotal.value = p.total
+    existsTotal.value = e.total
   } catch {
     /* 打开时获取失败不阻塞 */
   }
@@ -352,6 +422,27 @@ async function loadOrganized(reset: boolean) {
   }
 }
 
+async function loadExists(reset: boolean) {
+  loadingExists.value = true
+  try {
+    const page = reset ? 1 : existsPage.value + 1
+    const p = await api.listOrganizeRecords('exists', page, PAGE_SIZE)
+    if (reset) {
+      existsRecords.value = p.items
+      existsPage.value = 1
+    } else {
+      existsRecords.value.push(...p.items)
+      existsPage.value = page
+    }
+    existsTotal.value = p.total
+    existsLoaded.value = true
+  } catch (e) {
+    ElMessage.error(e instanceof Error ? e.message : String(e))
+  } finally {
+    loadingExists.value = false
+  }
+}
+
 async function loadOrganizing(reset: boolean) {
   loadingOrganizing.value = true
   try {
@@ -365,6 +456,11 @@ async function loadOrganizing(reset: boolean) {
     loadingOrganizing.value = false
   }
 }
+
+// 已存在分组默认折叠，首次展开时才加载
+watch(existsOpen, (v) => {
+  if (v.includes('exists') && !existsLoaded.value) loadExists(true)
+})
 
 // 整理中默认折叠，首次展开时才加载
 watch(organizingOpen, (v) => {
@@ -407,6 +503,7 @@ function currentParams() {
     mode: mode.value as LinkMode,
     namingTemplate: namingTemplate.value.trim() || undefined,
     conflictPolicy: (conflictPolicy.value || undefined) as 'skip' | 'overwrite' | 'rename' | undefined,
+    videoOnly: videoOnly.value || undefined,
   }
 }
 
@@ -479,6 +576,7 @@ async function submitOrganize(
         loadPending(true)
         loadOrganizing(true)
         loadOrganized(true)
+        loadExists(true)
         organizingOpen.value = ['organizing']
       }, 800)
     } else {
@@ -569,6 +667,12 @@ async function organizeAll() {
 }
 .group-head-text {
   font-weight: 600;
+}
+.param-hint {
+  font-size: 11px;
+  color: var(--el-text-color-secondary);
+  line-height: 1.5;
+  margin-top: 4px;
 }
 .organized-collapse {
   flex-shrink: 0;

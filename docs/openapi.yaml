@@ -408,14 +408,17 @@ paths:
       tags: [organize]
       operationId: listOrganizeRecords
       summary: 整理弹窗文件记录列表
-      description: 按整理状态分组（pending/organized）返回文件记录，联出影片标题与封面
+      description: |
+        按分组返回文件记录，联出影片标题与封面。
+        exists 分组为「已存在」：番号已存在于 Emby（最近一次 POST /emby/sync 快照）且本地尚未整理；
+        pending 分组会排除这些番号，保证分组互斥。
       parameters:
         - name: group
           in: query
           required: true
           schema:
             type: string
-            enum: [pending, organized]
+            enum: [pending, organizing, organized, exists]
         - name: page
           in: query
           schema:
@@ -856,6 +859,25 @@ paths:
                 type: array
                 items:
                   $ref: '#/components/schemas/EmbyLibrary'
+
+  /api/v1/emby/sync:
+    post:
+      tags: [emby]
+      operationId: syncEmbyLibrary
+      summary: 同步 Emby 媒体库番号快照（同步执行）
+      description: |
+        遍历全部电影媒体库，从条目文件路径/原标题/标题识别番号，全量替换本地 emby_items 快照表。
+        查询侧据此为本地影片返回 embyExists 标记，并把「emby 已存在但本地未整理」的文件
+        归入 GET /organize/records 的 exists 分组。
+      responses:
+        '200':
+          description: 同步结果
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmbySyncResult'
+        '400':
+          description: 未配置 Emby 服务地址或 API Key
 
   /api/v1/emby/items:
     get:
@@ -1378,6 +1400,9 @@ components:
         downloadImages:
           type: boolean
           description: 是否下载 poster.jpg / fanart.jpg / 剧照（省略时使用全局配置）
+        videoOnly:
+          type: boolean
+          description: 只整理视频：仅转移视频文件，不生成 nfo/图片（适配 Emby 已存在媒体的多分辨率入库）
         numbers:
           type: array
           items:
@@ -1433,6 +1458,9 @@ components:
           type: string
           enum: [skip, overwrite, rename]
           description: 冲突策略（省略时使用全局配置）
+        videoOnly:
+          type: boolean
+          description: 只整理视频：仅计算视频目标路径，不生成 nfo/图片
       required: [recordIds, targetDir, mode]
 
     OrganizePreviewItem:
@@ -1682,6 +1710,9 @@ components:
           type: string
           nullable: true
           description: 简介（中文简介在前，另起一段为原简介）
+        embyExists:
+          type: boolean
+          description: 该番号已存在于 Emby 媒体库（依据最近一次 POST /emby/sync 快照）
       required: [number, status]
 
     Movie:
@@ -1767,6 +1798,21 @@ components:
     OrganizeStatus:
       type: string
       enum: [pending, organized, failed, skipped]
+
+    EmbySyncResult:
+      type: object
+      description: Emby 媒体库同步结果（POST /emby/sync）
+      properties:
+        scanned:
+          type: integer
+          description: 扫描的 Emby 条目总数
+        matched:
+          type: integer
+          description: 成功识别出番号的条目数
+        syncedAt:
+          type: string
+          format: date-time
+          description: 快照时间
 
     FileRecord:
       type: object

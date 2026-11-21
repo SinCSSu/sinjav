@@ -161,7 +161,8 @@ class TriggerControllers(
             OrganizeParams(
                 targetDir = req.targetDir, mode = req.mode, namingTemplate = req.namingTemplate,
                 conflictPolicy = req.conflictPolicy, generateNfo = req.generateNfo,
-                downloadImages = req.downloadImages, numbers = req.numbers,
+                downloadImages = req.downloadImages, videoOnly = req.videoOnly,
+                numbers = req.numbers,
                 items = req.items?.map { OrganizeItem(it.recordId, it.targetPath, it.mode) },
             ),
         )
@@ -174,7 +175,10 @@ class TriggerControllers(
         require(req.mode in MODES) { "mode 必须为 hardlink/symlink/move/copy" }
         require(req.targetDir.isNotBlank()) { "targetDir 必填" }
         req.conflictPolicy?.let { require(it in POLICIES) { "conflictPolicy 必须为 skip/overwrite/rename" } }
-        return organizer.preview(req.recordIds, OrganizeParams(req.targetDir, req.mode, req.namingTemplate, req.conflictPolicy))
+        return organizer.preview(
+            req.recordIds,
+            OrganizeParams(req.targetDir, req.mode, req.namingTemplate, req.conflictPolicy, videoOnly = req.videoOnly),
+        )
     }
 
     @PostMapping("/pipeline")
@@ -197,7 +201,7 @@ class TriggerControllers(
                     require(!it.targetDir.isNullOrBlank()) { "organize.targetDir 必填" }
                     OrganizeParams(
                         it.targetDir, it.mode, it.namingTemplate, it.conflictPolicy,
-                        it.generateNfo, it.downloadImages, it.numbers,
+                        it.generateNfo, it.downloadImages, it.videoOnly, it.numbers,
                     )
                 },
             ),

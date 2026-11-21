@@ -49,6 +49,8 @@ export interface MovieSummary {
   coverUrl?: string | null
   status: MovieStatus
   plot?: string | null
+  /** 该番号已存在于 Emby 媒体库（依据最近一次「同步 Emby 库」快照） */
+  embyExists?: boolean
 }
 
 export interface Movie extends MovieSummary {
@@ -192,6 +194,8 @@ export interface OrganizeRequest {
   conflictPolicy?: ConflictPolicy
   generateNfo?: boolean
   downloadImages?: boolean
+  /** 只整理视频：仅转移视频文件，不生成 nfo/图片（适配 Emby 已存在媒体的多分辨率入库） */
+  videoOnly?: boolean
   numbers?: string[]
   /** 按文件记录逐条整理（可覆盖目标路径/方式），优先于 numbers；organized 记录视为重整 */
   items?: OrganizeItemRequest[]
@@ -220,6 +224,8 @@ export interface OrganizePreviewRequest {
   mode: LinkMode
   namingTemplate?: string
   conflictPolicy?: ConflictPolicy
+  /** 只整理视频：仅计算视频目标路径，不生成 nfo/图片 */
+  videoOnly?: boolean
 }
 
 export interface OrganizePreviewItem {

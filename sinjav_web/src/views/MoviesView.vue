@@ -44,6 +44,9 @@
         <el-button :icon="order === 'desc' ? SortDownIcon : SortUpIcon" @click="toggleOrder">
           {{ order === 'desc' ? '降序' : '升序' }}
         </el-button>
+        <el-tooltip content="遍历 Emby 媒体库识别番号并写入本地快照，用于标记「已存在于emby」与整理弹窗「已存在」分组" placement="top">
+          <el-button :loading="syncingEmby" @click="syncEmby">同步 Emby</el-button>
+        </el-tooltip>
       </template>
     </div>
 
@@ -76,6 +79,15 @@
               size="small"
             >
               {{ movieStatusLabels[m.status] }}
+            </el-tag>
+            <el-tag
+              v-if="m.embyExists"
+              class="emby-badge"
+              size="small"
+              type="warning"
+              effect="dark"
+            >
+              Emby已有
             </el-tag>
             <el-button
               class="delete-btn"
@@ -192,6 +204,21 @@ const embyItems = ref<EmbyItemSummary[]>([])
 const libraries = ref<EmbyLibrary[]>([])
 const libraryId = ref('')
 const embyError = ref('')
+const syncingEmby = ref(false)
+
+/** 同步 Emby 媒体库：识别番号写入本地快照，完成后刷新列表（卡片标记随之更新） */
+async function syncEmby() {
+  syncingEmby.value = true
+  try {
+    const r = await api.syncEmby()
+    ElMessage.success(`Emby 同步完成：扫描 ${r.scanned} 条，识别番号 ${r.matched} 条`)
+    load()
+  } catch (e) {
+    ElMessage.error(e instanceof Error ? e.message : String(e))
+  } finally {
+    syncingEmby.value = false
+  }
+}
 
 const totalPages = computed(() => Math.ceil(total.value / size.value))
 const emptyText = computed(() =>
@@ -409,6 +436,11 @@ onMounted(load)
 .status-badge {
   position: absolute;
   top: 8px;
+  left: 8px;
+}
+.emby-badge {
+  position: absolute;
+  top: 32px;
   left: 8px;
 }
 .delete-btn {
