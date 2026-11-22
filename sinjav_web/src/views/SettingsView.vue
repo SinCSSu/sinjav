@@ -152,30 +152,63 @@
         </template>
       </el-dialog>
 
-      <el-dialog v-model="showChainDialog" title="刮削链配置" width="760px">
-        <div class="hint" style="margin: 0 0 12px">按番号类型选择流水线（复刻 JavSP）；红色标签 = 未注册的源 id，运行时会被忽略</div>
+      <el-dialog v-model="showChainDialog" title="刮削链配置" width="1040px">
         <el-form label-width="90px" label-position="left">
           <el-form-item v-for="chain in chains" :key="chain.key" :label="chain.label">
-            <el-input v-model="form[chain.key]" :placeholder="chain.placeholder" class="chain-input">
-              <template #append>
-                <el-button type="primary" class="restore-btn" @click="restoreChain(chain)">
-                  <el-icon style="margin-right: 4px"><RefreshLeft /></el-icon>恢复默认
-                </el-button>
-              </template>
-            </el-input>
-            <div class="chain-flow">
-              <template v-for="(id, i) in parseChain(chain.key)" :key="id + i">
-                <span class="chain-arrow">→</span>
-                <el-tag size="small" :type="knownIdSet.has(id) ? 'primary' : 'danger'" effect="plain">{{ id }}</el-tag>
-              </template>
-              <span v-if="parseChain(chain.key).length === 0" class="hint" style="margin-left: 0">
-                空 = 回退「数据源优先顺序」
-              </span>
+            <div class="chain-row">
+              <div class="chain-scroll">
+                <VueDraggable
+                  v-model="chainLists[chain.key]"
+                  :animation="180"
+                  ghost-class="chain-ghost"
+                  chosen-class="chain-chosen"
+                  class="chain-list"
+                  @end="syncChain(chain.key)"
+                >
+                  <div v-for="(id, i) in chainLists[chain.key]" :key="id" class="chain-block">
+                    <span class="chain-block-src">{{ id }}</span>
+                    <el-icon class="chain-block-close" title="移除" @click.stop="removeChainItem(chain.key, i)">
+                      <CircleCloseFilled />
+                    </el-icon>
+                  </div>
+                </VueDraggable>
+                <el-dropdown
+                  trigger="click"
+                  class="chain-plus-wrap"
+                  @command="(v: string) => addChainItem(chain.key, v)"
+                >
+                  <el-button
+                    class="chain-plus"
+                    :class="{ 'chain-plus-solo': !chainLists[chain.key]?.length }"
+                    title="添加数据源"
+                  >
+                    <el-icon><Plus /></el-icon>
+                  </el-button>
+                  <template #dropdown>
+                    <el-dropdown-menu>
+                      <el-dropdown-item
+                        v-for="s in addableSources(chain.key)"
+                        :key="s"
+                        :command="s"
+                        class="chain-plus-item"
+                      >
+                        {{ s }}
+                      </el-dropdown-item>
+                      <el-dropdown-item v-if="!addableSources(chain.key).length" disabled>
+                        所有源都已在链中
+                      </el-dropdown-item>
+                    </el-dropdown-menu>
+                  </template>
+                </el-dropdown>
+                <span v-if="!chainLists[chain.key]?.length" class="hint" style="margin-left: 8px">
+                  空 = 回退「数据源优先顺序」
+                </span>
+              </div>
+              <el-button type="primary" size="small" class="restore-btn" @click="restoreChain(chain)">
+                <el-icon style="margin-right: 4px"><RefreshLeft /></el-icon>恢复默认
+              </el-button>
             </div>
             <div class="hint">{{ chain.hint }}</div>
-          </el-form-item>
-          <el-form-item>
-            <span class="hint">可用源 id：{{ availableSources }}</span>
           </el-form-item>
         </el-form>
         <template #footer>
@@ -291,8 +324,9 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
+import { VueDraggable } from 'vue-draggable-plus'
 import { api } from '../api'
 import type { SettingsUpdate } from '../api/types'
 
@@ -401,25 +435,10 @@ const chains = [
 ]
 
 function restoreChain(chain: { key: keyof SettingsUpdate }) {
-  form[chain.key] = JAVSP_CHAIN_DEFAULTS[chain.key as string]
+  const def = JAVSP_CHAIN_DEFAULTS[chain.key as string] ?? ''
+  form[chain.key] = def
+  chainLists[chain.key] = def.split(',').map((s) => s.trim()).filter(Boolean)
 }
-
-/** 全部已注册数据源（五条链并集 + sourceOrder，供 CF 过盾等下拉选择） */
-const allSourceOptions = computed(() => {
-  const ids = new Set<string>()
-  Object.values(JAVSP_CHAIN_DEFAULTS).forEach((s) =>
-    s.split(',').forEach((id) => ids.add(id.trim())),
-  )
-  ;(form.sourceOrder ?? '')
-    .split(',')
-    .map((s) => s.trim().toLowerCase())
-    .filter(Boolean)
-    .forEach((id) => ids.add(id))
-  return [...ids]
-})
-
-/** 展示用：链中未注册的源会被后端自动忽略 */
-const availableSources = allSourceOptions.value.join(' / ')
 
 const embyBaseUrlModel = computed({
   get: () => form.embyBaseUrl ?? '',
@@ -465,9 +484,8 @@ function setCfProxy(id: string, checked: boolean) {
   form.cfProxySources = [...set].join(', ')
 }
 
-/** 已注册数据源 id（后端返回；用于数据源配置表行） */
+/** 已注册数据源 id（后端返回；用于数据源配置表行与刮削链下拉选项） */
 const knownSources = ref<string[]>([])
-const knownIdSet = computed(() => new Set(knownSources.value))
 
 /** 默认启用的源（sourceOrder 内置默认），其余为 JavSP 移植源 */
 const defaultEnabledSources = new Set(['javbus', 'javdb', 'missav'])
@@ -504,12 +522,62 @@ function sourceRowClass({ row }: { row: { id: string } }): string {
   return sourceHasOverride(row.id) ? 'src-customized' : ''
 }
 
-/** 刮削链弹窗：把逗号串解析成流水线节点（实时预览） */
-function parseChain(key: keyof SettingsUpdate): string[] {
+/**
+ * 刮削链积木卡片：VueDraggable（SortableJS）要求可变数组作 v-model，
+ * 因此编辑期间以 chainLists 为工作副本，弹窗打开时从 form 逗号串初始化，
+ * 拖拽/增删后 syncChain 回写 form（保存时仍走逗号串，后端零改动）。
+ */
+const chainLists = reactive<Record<string, string[]>>({})
+
+function chainItemsOf(key: keyof SettingsUpdate): string[] {
   return ((form[key] as string) ?? '')
     .split(',')
-    .map((s) => s.trim().toLowerCase())
+    .map((s) => s.trim())
     .filter(Boolean)
+}
+
+function ensureChainLists() {
+  chains.forEach((c) => {
+    chainLists[c.key] = chainItemsOf(c.key)
+  })
+}
+watch(showChainDialog, (open) => {
+  if (open) ensureChainLists()
+})
+
+function writeChain(key: keyof SettingsUpdate, items: string[]) {
+  ;(form as Record<string, unknown>)[key as string] = items.join(', ')
+}
+
+/** VueDraggable @end：工作副本回写 form 逗号串 */
+function syncChain(key: keyof SettingsUpdate) {
+  writeChain(key, chainLists[key] ?? [])
+}
+
+/** 该链下拉框可选内容（未注册 id 保留可选，避免编辑时丢数据） */
+function chainOptions(key: keyof SettingsUpdate): string[] {
+  const all = new Set(knownSources.value)
+  ;(chainLists[key] ?? chainItemsOf(key)).forEach((id) => all.add(id))
+  return [...all]
+}
+
+/** 「添加源」下拉框：排除链中已有项 */
+function addableSources(key: keyof SettingsUpdate): string[] {
+  const items = new Set(chainLists[key] ?? [])
+  return chainOptions(key).filter((s) => !items.has(s))
+}
+
+function removeChainItem(key: keyof SettingsUpdate, index: number) {
+  chainLists[key]?.splice(index, 1)
+  syncChain(key)
+}
+
+/** 末尾「+」下拉选择后追加到链尾 */
+function addChainItem(key: keyof SettingsUpdate, v: string) {
+  if (!v) return
+  const list = (chainLists[key] ??= [])
+  if (!list.includes(v)) list.push(v)
+  syncChain(key)
 }
 
 async function load() {
@@ -636,31 +704,163 @@ onMounted(() => {
   background-color: var(--el-color-primary-light-9);
 }
 
-/* ---- 刮削链配置弹窗 ---- */
-.chain-flow {
+/* ---- 刮削链配置弹窗（链式选择框） ---- */
+.chain-row {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 4px;
-  margin-top: 4px;
+  gap: 6px;
   width: 100%;
 }
 .chain-arrow {
   color: var(--el-text-color-secondary);
   font-size: 12px;
 }
-/* 恢复默认：与 DirTreeInput 的 append 按钮统一——按钮撑满 append 区域、无缝拼接 */
-.chain-input :deep(.el-input-group__append) {
-  padding: 0;
+/* 积木链区：单行横向排列，过长时横向滚动，「+」始终紧跟末卡不换行 */
+.chain-scroll {
+  display: flex;
+  align-items: center;
+  overflow-x: auto;
+  overflow-y: hidden;
+  max-width: 100%;
+  padding: 2px;
 }
-.chain-input :deep(.el-input-group__append .el-button) {
-  height: 100%;
-  min-height: 100%;
-  margin: 0;
-  border-radius: 0 4px 4px 0; /* 左侧直角贴输入框，右侧 4px 方角圆角 */
+/* 积木卡片容器（VueDraggable 排序列表）：卡片紧挨着，靠凹凸咬合拼接 */
+.chain-list {
+  display: inline-flex;
+  flex-wrap: nowrap;
+  align-items: center;
 }
-/* 实心主色、白字（对齐 ScanDialog.scan-btn） */
+/*
+ * 积木卡片（Scratch 式咬合，配色沿用主题）：
+ * ::before = 左侧凹口（弹窗底色圆盘在左缘挖出半圆咬口，承接上一张卡的凸榫）
+ * ::after  = 右侧凸榫（半圆榫头伸出右缘，嵌进下一张卡的凹口）
+ * 卡片盒子间距为 0；凸榫 z-index 高于下一张卡的凹口圆盘 → 榫头盖住咬口正好卡紧。
+ */
+/* 卡片/榫头/「+」统一用同一底色变量，保证榫卯处颜色完全一致 */
+.chain-row {
+  --block-bg: var(--el-color-primary-light-8);
+}
+.chain-block {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 26px;
+  padding: 0 12px;
+  border: 1px solid var(--el-color-primary-light-5);
+  border-radius: 6px;
+  background: var(--block-bg);
+  user-select: none;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+/* 末尾「+」块：用左缘凹口承接最后一张卡的凸榫，点击弹出可添加数据源 */
+.chain-plus-wrap {
+  display: inline-flex;
+}
+.chain-plus {
+  position: relative;
+  height: 26px;
+  padding: 0 9px;
+  margin-left: 0;
+  border: 1px solid var(--el-color-primary-light-5);
+  border-left: none;
+  border-radius: 0 6px 6px 0;
+  background: var(--block-bg);
+  color: var(--el-text-color-regular);
+}
+/* 「+」块左缘凹口：承接末卡的凸榫（-7px 对准视觉边框线，裁掉溢出左半圆） */
+.chain-plus::before {
+  content: '';
+  position: absolute;
+  left: -7px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--el-dialog-bg-color, var(--el-bg-color));
+  clip-path: inset(0 0 0 50%);
+  z-index: 1;
+}
+.chain-plus:hover,
+.chain-plus:focus {
+  background: var(--el-color-primary-light-7);
+  border-color: var(--el-color-primary-light-5);
+  color: var(--el-color-primary);
+}
+/* 链为空时「+」独立成块，无凸榫 */
+.chain-plus-solo {
+  margin-left: 0;
+  border-left: 1px solid var(--el-border-color);
+  border-radius: 6px;
+}
+.chain-plus-solo::before {
+  display: none;
+}
+.chain-plus-item {
+  font-family: 'JetBrains Mono', Consolas, monospace;
+  font-weight: 600;
+}
+/* 左侧凹口：弹窗底色圆盘在左缘挖出半圆咬口，承接上一张卡的凸榫。
+   定位基准是 padding 盒（边框内侧 1px），故 -7px 才能对准视觉边框线；
+   clip-path 裁掉圆盘溢出到上一张卡上的左半圆（否则会显出白色圆点） */
+.chain-block::before {
+  content: '';
+  position: absolute;
+  left: -7px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--el-dialog-bg-color, var(--el-bg-color));
+  clip-path: inset(0 0 0 50%);
+  z-index: 1;
+}
+/* 右侧凸榫：半圆榫头伸出右缘，嵌进下一张卡的凹口（z 高于凹口圆盘 → 卡紧）。
+   right -7px + 宽 7px：左端盖住矩形边框在榫根的残留、右端凸出 6px，描边沿咬合轮廓连续 */
+.chain-block::after {
+  content: '';
+  position: absolute;
+  right: -7px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 7px;
+  height: 12px;
+  background: var(--block-bg);
+  border: 1px solid var(--el-color-primary-light-5);
+  border-left: none;
+  border-radius: 0 6px 6px 0;
+  z-index: 2;
+}
+.chain-block:first-child::before {
+  display: none;
+}
+/* SortableJS 状态：被拖起的原位残影 / 手中的卡片 */
+.chain-ghost {
+  opacity: 0.35;
+  border-style: dashed;
+}
+.chain-chosen {
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.18);
+}
+.chain-block-src {
+  font-family: 'JetBrains Mono', Consolas, monospace;
+  font-weight: 600;
+  font-size: 13px;
+}
+.chain-block-close {
+  color: var(--el-text-color-placeholder);
+  font-size: 13px;
+  cursor: pointer;
+}
+.chain-block-close:hover {
+  color: var(--el-color-danger);
+}
+/* 恢复默认：实心主色、白字（对齐 ScanDialog.scan-btn） */
 .restore-btn {
+  margin-left: auto;
   background: var(--el-color-primary) !important;
   border: 1px solid var(--el-color-primary) !important;
   color: #fff !important;

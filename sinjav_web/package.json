@@ -15,6 +15,7 @@
     "@element-plus/icons-vue": "^2.3.2",
     "element-plus": "^2.14.8",
     "vue": "^3.5.45",
+    "vue-draggable-plus": "^0.6.1",
     "vue-router": "^5.5.1"
   },
   "devDependencies": {
