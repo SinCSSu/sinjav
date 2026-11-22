@@ -35,7 +35,7 @@ class JavBusScraper(
     private val selPlot = "div.movie-description div.panel-body p"
 
     override fun scrape(number: String): MovieMetadata {
-        val base = props.scraper.baseUrlJavbus.trimEnd('/')
+        val base = props.baseUrlFor("javbus").trimEnd('/')
         val html = http.get("$base/search/${urlEncode(number)}", referer = base, source = id())
         val searchDoc = Jsoup.parse(html)
         val detailUrl = searchDoc.select("a.movie-box").firstOrNull()?.attr("href")

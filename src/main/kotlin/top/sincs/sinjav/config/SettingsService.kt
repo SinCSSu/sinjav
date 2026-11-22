@@ -18,8 +18,10 @@ class SettingsService(
 
     private val log = LoggerFactory.getLogger(SettingsService::class.java)
 
-    /** 敏感配置项：日志中打码 */
-    private val sensitiveKeys = setOf("javdbCookie", "deeplApiKey", "baiduTranslateAppId", "baiduTranslateSecret", "embyApiKey")
+    /** 敏感配置项：日志中打码（sourceConfigs 含各源 Cookie，整体打码） */
+    private val sensitiveKeys = setOf("javdbCookie", "deeplApiKey", "baiduTranslateAppId", "baiduTranslateSecret", "embyApiKey", "sourceConfigs")
+
+    private val mapper = tools.jackson.databind.ObjectMapper()
 
     @PostConstruct
     fun applyFromDb() {
@@ -32,6 +34,12 @@ class SettingsService(
     fun update(u: top.sincs.sinjav.api.dto.SettingsUpdate) {
         val changes = buildList {
             u.sourceOrder?.let { add("sourceOrder" to it) }
+            u.sourceConfigs?.let { add("sourceConfigs" to mapper.writeValueAsString(it)) }
+            u.chainNormal?.let { add("chainNormal" to it) }
+            u.chainFc2?.let { add("chainFc2" to it) }
+            u.chainCid?.let { add("chainCid" to it) }
+            u.chainGetchu?.let { add("chainGetchu" to it) }
+            u.chainGyutto?.let { add("chainGyutto" to it) }
             u.userAgent?.let { add("userAgent" to it) }
             u.javdbCookie?.let { add("javdbCookie" to it) }
             u.proxyHost?.let { add("proxyHost" to it) }
@@ -77,6 +85,12 @@ class SettingsService(
     private fun apply(key: String, value: String) {
         when (key) {
             "sourceOrder" -> props.scraper.sourceOrder = value
+            "sourceConfigs" -> applySourceConfigs(value)
+            "chainNormal" -> props.scraper.chainNormal = value
+            "chainFc2" -> props.scraper.chainFc2 = value
+            "chainCid" -> props.scraper.chainCid = value
+            "chainGetchu" -> props.scraper.chainGetchu = value
+            "chainGyutto" -> props.scraper.chainGyutto = value
             "userAgent" -> props.scraper.userAgent = value
             "javdbCookie" -> props.scraper.javdbCookie = value
             "proxyHost" -> props.scraper.proxyHost = value
@@ -101,5 +115,19 @@ class SettingsService(
             "embyProxyPort" -> props.emby.proxyPort = value.toIntOrNull() ?: 0
             "imagesTtlDays" -> props.images.ttlDays = value.toIntOrNull() ?: 3
         }
+    }
+
+    /** 数据源独立配置：JSON → Map（key 统一小写，覆盖项全空的条目剔除） */
+    private fun applySourceConfigs(json: String) {
+        val parsed = runCatching {
+            mapper.readValue(json, object : tools.jackson.core.type.TypeReference<Map<String, SourceConfig>>() {})
+        }.getOrElse {
+            log.warn("sourceConfigs 解析失败，忽略: {}", it.message)
+            return
+        }
+        props.scraper.sources = parsed.entries
+            .associate { (k, v) -> k.trim().lowercase() to v }
+            .filterValues { it.hasAnyOverride() }
+            .toMutableMap()
     }
 }

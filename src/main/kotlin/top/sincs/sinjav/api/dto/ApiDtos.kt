@@ -138,6 +138,14 @@ data class PipelineRequest(
 
 data class SettingsUpdate(
     val sourceOrder: String? = null,
+    /** 每数据源独立配置（key=数据源 id）：站点地址/鉴权 Cookie/超时/访问间隔；整体替换 */
+    val sourceConfigs: Map<String, top.sincs.sinjav.config.SourceConfig>? = null,
+    // 刮削链（复刻 JavSP：按番号类型 5 条流水线，逗号分隔，顺序即优先级）
+    val chainNormal: String? = null,
+    val chainFc2: String? = null,
+    val chainCid: String? = null,
+    val chainGetchu: String? = null,
+    val chainGyutto: String? = null,
     val userAgent: String? = null,
     val javdbCookie: String? = null,
     val proxyHost: String? = null,
@@ -267,6 +275,12 @@ data class OrganizeRecordDto(
 
 data class SettingsDto(
     val sourceOrder: String, val userAgent: String, val javdbCookie: String,
+    val chainNormal: String, val chainFc2: String, val chainCid: String,
+    val chainGetchu: String, val chainGyutto: String,
+    /** 每数据源独立配置（key=数据源 id） */
+    val sourceConfigs: Map<String, top.sincs.sinjav.config.SourceConfig>,
+    /** 全部已注册数据源 id（设置页「数据源配置」表行） */
+    val knownSources: Set<String>,
     val proxyHost: String, val proxyPort: Int, val requestIntervalMs: Long, val concurrency: Int,
     val timeoutMs: Long, val cfTimeoutMs: Long,
     val cfProxyUrl: String, val cfProxySources: String,
@@ -284,8 +298,15 @@ data class SettingsDto(
     val imagesTtlDays: Int,
 ) {
     companion object {
-        fun from(props: AppProperties) = SettingsDto(
+        fun from(props: AppProperties, knownSources: Set<String> = emptySet()) = SettingsDto(
             sourceOrder = props.scraper.sourceOrder,
+            chainNormal = props.scraper.chainNormal,
+            chainFc2 = props.scraper.chainFc2,
+            chainCid = props.scraper.chainCid,
+            chainGetchu = props.scraper.chainGetchu,
+            chainGyutto = props.scraper.chainGyutto,
+            sourceConfigs = props.scraper.sources,
+            knownSources = knownSources,
             userAgent = props.scraper.userAgent, javdbCookie = props.scraper.javdbCookie,
             proxyHost = props.scraper.proxyHost, proxyPort = props.scraper.proxyPort,
             cfProxyUrl = props.scraper.cfProxyUrl, cfProxySources = props.scraper.cfProxySources,

@@ -56,9 +56,12 @@ class HttpClientFactory(private val props: AppProperties) {
     private fun client(source: String? = null): HttpClient =
         if (useCfProxy(source)) cfClient() else defaultClient()
 
-    /** 请求超时：过盾链路单独用 cfTimeoutMs（需等待 CF 挑战，更长） */
-    private fun timeoutFor(source: String?): Duration =
-        Duration.ofMillis(if (useCfProxy(source)) props.scraper.cfTimeoutMs else props.scraper.timeoutMs)
+    /** 请求超时：数据源独立配置优先；否则过盾链路单独用 cfTimeoutMs（需等待 CF 挑战，更长） */
+    private fun timeoutFor(source: String?): Duration {
+        val perSource = source?.let { props.sourceConfig(it) }?.timeoutMs?.takeIf { it > 0 }
+        val ms = perSource ?: if (useCfProxy(source)) props.scraper.cfTimeoutMs else props.scraper.timeoutMs
+        return Duration.ofMillis(ms)
+    }
 
     private fun defaultClient(): HttpClient {
         val key = props.scraper.proxyHost to props.scraper.proxyPort
@@ -158,6 +161,8 @@ class HttpClientFactory(private val props: AppProperties) {
 
     private val lock = ReentrantReadWriteLock()
     private var lastRequestAt = 0L
+    /** 每数据源独立的最近请求时间（按源限速：不同源并行、同源按间隔串行） */
+    private val lastRequestBySource = mutableMapOf<String, Long>()
 
     /**
      * MITM 代理专用信任管理器：
@@ -284,8 +289,26 @@ class HttpClientFactory(private val props: AppProperties) {
         override fun getAcceptedIssuers(): Array<java.security.cert.X509Certificate> = delegate.acceptedIssuers
     }
 
+    /**
+     * HTTP 失败诊断细化（借自 JavSP 的 403 分类处理）：
+     * - 响应体含 CF 挑战页特征 → 提示需要过盾代理/镜像
+     * - CF Error 1020 → 地区 IP 屏蔽（如 JavDB 屏蔽日本 IP），提示换代理地区
+     * - 其余按普通状态码报错
+     */
+    private fun describeHttpFailure(code: Int, url: String, body: String): String {
+        if (code != 403 && code != 503) return "HTTP $code for $url"
+        return when {
+            body.contains("Just a moment") || body.contains("challenge-platform") ||
+                body.contains("cf-browser-verification") ->
+                "HTTP $code Cloudflare 挑战（需配置过盾代理 cfProxySources 或换镜像 base-url）: $url"
+            body.contains("1020") ->
+                "HTTP $code CF Error 1020 地区 IP 屏蔽（如 JavDB 屏蔽日本 IP），请更换代理地区: $url"
+            else -> "HTTP $code for $url"
+        }
+    }
+
     fun get(url: String, referer: String? = null, cookie: String? = null, source: String? = null): String {
-        throttle()
+        throttle(source)
         try {
             val builder = HttpRequest.newBuilder(URI.create(url))
                 .timeout(timeoutFor(source))
@@ -294,9 +317,9 @@ class HttpClientFactory(private val props: AppProperties) {
                 .header("Accept-Language", "zh-CN,zh;q=0.9,en;q=0.8")
             // 未显式指定 Referer 时按 URL 源站点推导（JavBus/JavDB 图片有 Referer 防盗链）
             builder.header("Referer", referer ?: originOf(url))
-            cookie?.takeIf { it.isNotBlank() }?.let { builder.header("Cookie", it) }
+            props.cookieFor(source ?: "", cookie)?.let { builder.header("Cookie", it) }
             val resp = client(source).send(builder.GET().build(), HttpResponse.BodyHandlers.ofString())
-            if (resp.statusCode() != 200) throw ScrapeException("HTTP ${resp.statusCode()} for $url")
+            if (resp.statusCode() != 200) throw ScrapeException(describeHttpFailure(resp.statusCode(), url, resp.body()))
             return resp.body()
         } finally {
             release()
@@ -306,9 +329,67 @@ class HttpClientFactory(private val props: AppProperties) {
     fun download(url: String, referer: String? = null, source: String? = null): ByteArray =
         downloadDetailed(url, referer, source).bytes
 
+    /**
+     * GET 并返回 (响应体, 最终 URI, 会话 Cookie)。
+     * - 最终 URI：检测重定向落点（fc2 要求登录会跳 id.fc2.com、arzon/javmenu 未命中会跳回主页）
+     * - 会话 Cookie：年龄验证页（arzon agecheck）返回的 Set-Cookie，供后续请求携带
+     */
+    fun getDetailed(
+        url: String,
+        referer: String? = null,
+        cookie: String? = null,
+        source: String? = null,
+    ): Triple<String, URI, String?> {
+        throttle(source)
+        try {
+            val builder = HttpRequest.newBuilder(URI.create(url))
+                .timeout(timeoutFor(source))
+                .header("User-Agent", props.scraper.userAgent)
+                .header("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
+                .header("Accept-Language", "zh-CN,zh;q=0.9,en;q=0.8")
+            builder                .header("Referer", referer ?: originOf(url))
+            props.cookieFor(source ?: "", cookie)?.let { builder.header("Cookie", it) }
+            val resp = client(source).send(builder.GET().build(), HttpResponse.BodyHandlers.ofString())
+            if (resp.statusCode() != 200) throw ScrapeException(describeHttpFailure(resp.statusCode(), url, resp.body()))
+            val cookies = resp.headers().allValues("set-cookie")
+                .joinToString("; ") { it.substringBefore(';') }
+                .takeIf { it.isNotBlank() }
+            return Triple(resp.body(), resp.uri(), cookies)
+        } finally {
+            release()
+        }
+    }
+
+    /** POST 表单并返回 HTML（jav321 的「搜索即详情」接口） */
+    fun postForm(
+        url: String,
+        data: Map<String, String>,
+        referer: String? = null,
+        source: String? = null,
+    ): String {
+        throttle(source)
+        try {
+            val form = data.entries.joinToString("&") {
+                "${java.net.URLEncoder.encode(it.key, Charsets.UTF_8)}=${java.net.URLEncoder.encode(it.value, Charsets.UTF_8)}"
+            }
+            val builder = HttpRequest.newBuilder(URI.create(url))
+                .timeout(timeoutFor(source))
+                .header("User-Agent", props.scraper.userAgent)
+                .header("Content-Type", "application/x-www-form-urlencoded")
+                .header("Referer", referer ?: originOf(url))
+            props.cookieFor(source ?: "", null)?.let { builder.header("Cookie", it) }
+            builder.POST(HttpRequest.BodyPublishers.ofString(form))
+            val resp = client(source).send(builder.build(), HttpResponse.BodyHandlers.ofString())
+            if (resp.statusCode() != 200) throw ScrapeException(describeHttpFailure(resp.statusCode(), url, resp.body()))
+            return resp.body()
+        } finally {
+            release()
+        }
+    }
+
     /** POST JSON 请求（如 DeepL 翻译 API），返回响应体 */
     fun postJson(url: String, json: String, headers: Map<String, String> = emptyMap()): String {
-        throttle()
+        throttle(null)
         try {
             val builder = HttpRequest.newBuilder(URI.create(url))
                 .timeout(Duration.ofMillis(props.scraper.timeoutMs))
@@ -325,7 +406,7 @@ class HttpClientFactory(private val props: AppProperties) {
 
     /** 下载二进制资源（图片），返回内容与 Content-Type */
     fun downloadDetailed(url: String, referer: String? = null, source: String? = null): Downloaded {
-        throttle()
+        throttle(source)
         try {
             val builder = HttpRequest.newBuilder(URI.create(url))
                 .timeout(timeoutFor(source))
@@ -347,20 +428,27 @@ class HttpClientFactory(private val props: AppProperties) {
         return "${uri.scheme}://${uri.host}/"
     }
 
-    /** 全局请求最小间隔（限速防风控）。并发上限已移至影片维度（ScraperProps.concurrency），此处不再限制同时在途请求数 */
-    private fun throttle() {
-        val interval = props.scraper.requestIntervalMs
+    /**
+     * 请求最小间隔（限速防风控）：数据源独立配置的 intervalMs 优先，否则用全局 requestIntervalMs。
+     * 按数据源分别计间隔——不同源可并行，同源的相邻请求起始时间相差 interval。
+     */
+    private fun throttle(source: String?) {
+        val key = source?.trim()?.lowercase() ?: ""
+        val perSource = source?.let { props.sourceConfig(it) }?.intervalMs?.takeIf { it > 0 }
+        val interval = perSource ?: props.scraper.requestIntervalMs
         if (interval <= 0) return
         val waitMs = lock.write {
             val now = System.currentTimeMillis()
-            val since = now - lastRequestAt
+            val last = if (key.isEmpty()) lastRequestAt else lastRequestBySource.getOrPut(key) { 0L }
+            val since = now - last
             if (since >= interval) {
-                lastRequestAt = now
+                if (key.isEmpty()) lastRequestAt = now else lastRequestBySource[key] = now
                 0L
             } else {
                 // 排队的请求依次错开一个间隔，保证相邻请求起始时间相差 interval
-                lastRequestAt += interval
-                interval - since
+                val next = last + interval
+                if (key.isEmpty()) lastRequestAt = next else lastRequestBySource[key] = next
+                next - now
             }
         }
         if (waitMs > 0) Thread.sleep(waitMs)

@@ -7,8 +7,10 @@ import java.util.Collections
 import java.util.concurrent.Executors
 
 /**
- * 刮削策略链：对单个影片，所有数据源并发请求（HTTP 层仍受 request-interval-ms 全局限速约束）。
- * 每个刮削字段按 source-order 优先级从高到低取第一个非空值；列表字段（女优/类别/剧照）取并集。
+ * 刮削策略链（复刻 JavSP 流水线）：按番号类型选择对应刮削链（normal/fc2/cid/getchu/gyutto），
+ * 链内所有数据源并发请求（HTTP 层仍受 request-interval-ms 全局限速约束）。
+ * 每个刮削字段按链内顺序优先级从高到低取第一个非空值；列表字段（女优/类别/剧照）取并集。
+ * 显式传入 sources 时忽略链配置（如多源对比的手动指定）。
  */
 @Component
 class ScraperChain(
@@ -19,6 +21,22 @@ class ScraperChain(
     private val log = LoggerFactory.getLogger(ScraperChain::class.java)
     private val byId = scrapers.associateBy { it.id() }
 
+    /** 按番号形态归类：FC2 系 → fc2；GETCHU/GYUTTO 前缀 → 专用链；纯数字 6-8 位 → cid；其余 → normal */
+    fun chainTypeOf(number: String): ScrapeChainType = when {
+        number.uppercase().startsWith("FC2") -> ScrapeChainType.FC2
+        number.uppercase().startsWith("GETCHU-") -> ScrapeChainType.GETCHU
+        number.uppercase().startsWith("GYUTTO-") -> ScrapeChainType.GYUTTO
+        Regex("""^\d{6,8}$""").matches(number) -> ScrapeChainType.CID
+        else -> ScrapeChainType.NORMAL
+    }
+
+    /** 该番号应使用的刮削链（过滤掉未注册的源 id；链内全部无效时回退 sourceOrder） */
+    fun chainFor(number: String): List<String> {
+        val type = chainTypeOf(number)
+        val chain = props.chainFor(type).filter { byId.containsKey(it) }
+        return chain.ifEmpty { props.sourceOrderList().filter { byId.containsKey(it) } }
+    }
+
     @Throws(ScrapeException::class)
     fun scrape(number: String, sources: List<String>? = null): MovieMetadata =
         scrapeWithSource(number, sources).second
@@ -26,7 +44,7 @@ class ScraperChain(
     /** 返回 (来源标识, 元数据)；多源成功时来源标识为 "merged" */
     @Throws(ScrapeException::class)
     fun scrapeWithSource(number: String, sources: List<String>? = null): Pair<String, MovieMetadata> {
-        val order = (sources ?: props.sourceOrderList()).filter { byId.containsKey(it) }
+        val order = (sources ?: chainFor(number)).filter { byId.containsKey(it) }
         if (order.isEmpty()) throw ScrapeException("无可用刮削源，可用源: ${byId.keys}")
         val results = scrapeAllSources(number, order)
         return if (results.size > 1) "merged" to merge(results)
@@ -35,12 +53,12 @@ class ScraperChain(
     }
 
     /**
-     * 并发抓取全部数据源（不合并），返回按 source-order 排序的全部成功结果。
+     * 并发抓取全部数据源（不合并），返回按刮削链顺序排序的全部成功结果。
      * 供多源对比刮削预览使用：用户逐字段选择来源后落库。
      */
     @Throws(ScrapeException::class)
     fun scrapeAllSources(number: String, order: List<String>? = null): List<Pair<String, MovieMetadata>> {
-        val effectiveOrder = (order ?: props.sourceOrderList()).filter { byId.containsKey(it) }
+        val effectiveOrder = (order ?: chainFor(number)).filter { byId.containsKey(it) }
         if (effectiveOrder.isEmpty()) throw ScrapeException("无可用刮削源，可用源: ${byId.keys}")
 
         val results = Collections.synchronizedList(mutableListOf<Pair<String, MovieMetadata>>()) // (sourceId, metadata)
@@ -54,7 +72,14 @@ class ScraperChain(
                     } catch (e: Exception) {
                         // 部分异常 message 为 null（如无消息的 NPE），带上异常类名便于诊断
                         val reason = e.message?.takeIf { it.isNotBlank() } ?: "${e::class.simpleName}（无错误信息）"
-                        log.warn("刮削源 {} 失败 {}: {}", id, number, reason, e)
+                        if (reason.contains("未找到")) {
+                            // 未命中番号属预期行为（多源并发必有大量未命中），降噪到 DEBUG
+                            log.debug("刮削源 {} 未命中 {}: {}", id, number, reason)
+                        } else {
+                            // 真实故障（403 风控/超时/解析崩溃）：单行 WARN，堆栈放 DEBUG
+                            log.warn("刮削源 {} 失败 {}: {} ({})", id, number, reason, e::class.simpleName)
+                            log.debug("刮削源 {} 失败堆栈", id, e)
+                        }
                         errors += "${id}: $reason"
                     }
                 }

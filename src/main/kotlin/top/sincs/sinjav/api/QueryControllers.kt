@@ -178,15 +178,16 @@ class SettingsController(
     private val props: AppProperties,
     private val settings: SettingsService,
     private val imageStore: top.sincs.sinjav.scraper.ImageStore,
+    private val scraperChain: top.sincs.sinjav.scraper.ScraperChain,
 ) {
 
     @GetMapping("/settings")
-    fun get(): SettingsDto = SettingsDto.from(props)
+    fun get(): SettingsDto = SettingsDto.from(props, scraperChain.knownSources())
 
     @PutMapping("/settings")
     fun update(@RequestBody req: SettingsUpdate): SettingsDto {
         settings.update(req)
-        return SettingsDto.from(props)
+        return SettingsDto.from(props, scraperChain.knownSources())
     }
 
     /** 手动清理过期图片缓存（按设置页配置的 TTL），返回删除的文件数与字节数 */

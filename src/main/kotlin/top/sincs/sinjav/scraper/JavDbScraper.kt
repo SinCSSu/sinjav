@@ -41,15 +41,15 @@ class JavDbScraper(
     private val selPlot = "div.video-description"
 
     override fun scrape(number: String): MovieMetadata {
-        val base = props.scraper.baseUrlJavdb.trimEnd('/')
-        val cookie = props.scraper.javdbCookie
-        val html = http.get("$base/search?q=${urlEncode(number)}&f=all", cookie = cookie, source = id())
+        val base = props.baseUrlFor("javdb").trimEnd('/')
+        // Cookie 由 HttpClientFactory 统一解析：数据源独立配置 > 内置 javdbCookie
+        val html = http.get("$base/search?q=${urlEncode(number)}&f=all", source = id())
         val searchDoc = Jsoup.parse(html)
         val detailHref = searchDoc.select(selResultLink).firstOrNull()?.attr("href")
             ?: throw ScrapeException("JavDB 未找到番号 $number 的搜索结果")
         val detailUrl = if (detailHref.startsWith("http")) detailHref else base + detailHref
 
-        val doc = Jsoup.parse(http.get(detailUrl, referer = base, cookie = cookie, source = id()))
+        val doc = Jsoup.parse(http.get(detailUrl, referer = base, source = id()))
         return parseDetail(doc, number).also { logResult(number, it) }
     }
 

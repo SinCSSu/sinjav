@@ -32,7 +32,7 @@ class MissAvScraper(
     private val selPlotMeta = "meta[property=og:description]"
 
     override fun scrape(number: String): MovieMetadata {
-        val base = props.scraper.baseUrlMissav.trimEnd('/')
+        val base = props.baseUrlFor("missav").trimEnd('/')
         val doc = Jsoup.parse(http.get("$base/${number.lowercase()}", referer = base, source = id()), base)
         return parseDetail(doc, number).also { logResult(number, it) }
     }

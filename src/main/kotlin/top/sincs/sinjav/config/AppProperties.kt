@@ -1,10 +1,36 @@
 package top.sincs.sinjav.config
 
 import org.springframework.boot.context.properties.ConfigurationProperties
+import top.sincs.sinjav.scraper.ScrapeChainType
+
+/**
+ * 单个数据源的独立配置（设置页「数据源配置」表）：
+ * - baseUrl：覆盖内置站点地址（镜像域名切换）
+ * - cookie：鉴权信息（会作为该源全部请求的 Cookie；留空用内置默认，如 mgstage adc=1）
+ * - timeoutMs / intervalMs：超时与访问间隔（毫秒），0 = 用全局默认
+ */
+data class SourceConfig(
+    var baseUrl: String = "",
+    var cookie: String = "",
+    var timeoutMs: Long = 0,
+    var intervalMs: Long = 0,
+) {
+    /** 是否配置了任意覆盖项（全空视为未配置） */
+    fun hasAnyOverride(): Boolean =
+        baseUrl.isNotBlank() || cookie.isNotBlank() || timeoutMs > 0 || intervalMs > 0
+}
 
 data class ScraperProps(
     var sourceOrder: String = "javbus, javdb, missav",
-    var userAgent: String = "Mozilla/5.0",
+    // ---- 刮削链（复刻 JavSP：按番号类型 5 条流水线，逗号分隔，顺序即字段优先级）----
+    // normal：有码常规番号（ABP-123 等）；fc2：FC2-PPV 系；cid：纯数字内容 ID；getchu/gyutto：同人平台
+    var chainNormal: String = "airav, avsox, javbus, javdb, javlib, jav321, mgstage, prestige",
+    var chainFc2: String = "fc2, avsox, javdb, javmenu, fc2ppvdb",
+    var chainCid: String = "fanza",
+    var chainGetchu: String = "dl_getchu",
+    var chainGyutto: String = "gyutto",
+    // 完整浏览器 UA：裸 "Mozilla/5.0" 会被 mgstage/javlib/airav 等站点的风控直接 403
+    var userAgent: String = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
     var javdbCookie: String = "",
     var proxyHost: String = "",
     var proxyPort: Int = 0,
@@ -17,6 +43,26 @@ data class ScraperProps(
     var baseUrlJavbus: String = "https://www.javbus.com",
     var baseUrlJavdb: String = "https://javdb.com",
     var baseUrlMissav: String = "https://missav.ai",
+    // ---- JavSP 移植数据源（默认 sourceOrder 不含它们，按需在 source-order 中启用） ----
+    var baseUrlAirav: String = "https://www.airav.wiki",
+    var baseUrlArzon: String = "https://www.arzon.jp",
+    var baseUrlAvsox: String = "https://avsox.click",
+    var baseUrlAvwiki: String = "https://av-wiki.net",
+    var baseUrlFanza: String = "https://www.dmm.co.jp",
+    var baseUrlFc2: String = "https://adult.contents.fc2.com",
+    var baseUrlFc2ppvdb: String = "https://fc2ppvdb.com",
+    var baseUrlGyutto: String = "http://gyutto.com",
+    var baseUrlJav321: String = "https://www.jav321.com",
+    var baseUrlJavlib: String = "https://www.javlibrary.com",
+    var baseUrlJavmenu: String = "https://mrzyx.xyz",
+    var baseUrlMgstage: String = "https://www.mgstage.com",
+    var baseUrlPrestige: String = "https://www.prestige-av.com",
+    var baseUrlDlGetchu: String = "https://dl.getchu.com",
+    var baseUrlFc2fan: String = "https://fc2club.top",
+    /** fc2fan 本地 HTML 镜像目录（存在即启用本地模式，目录结构 {番号}.html）；空 = 走远程 */
+    var fc2fanLocalPath: String = "",
+    // ---- 每数据源独立配置（key=数据源 id；设置页「数据源配置」，settings 表以 JSON 持久化）----
+    var sources: MutableMap<String, SourceConfig> = mutableMapOf(),
     // CF 过盾代理（如 trawl MITM 正向代理 http://127.0.0.1:8192）。
     // 配置后：cfProxySources 中的数据源请求与图片走该代理，其余走全局 proxyHost/proxyPort（未配则直连）。
     var cfProxyUrl: String = "",
@@ -84,7 +130,68 @@ data class AppProperties(
     fun sourceOrderList(): List<String> =
         scraper.sourceOrder.split(',').map { it.trim().lowercase() }.filter { it.isNotBlank() }
 
+    /** 按番号类型解析刮削链；该链未配置（空）时回退 sourceOrder */
+    fun chainFor(type: ScrapeChainType): List<String> {
+        val raw = when (type) {
+            ScrapeChainType.NORMAL -> scraper.chainNormal
+            ScrapeChainType.FC2 -> scraper.chainFc2
+            ScrapeChainType.CID -> scraper.chainCid
+            ScrapeChainType.GETCHU -> scraper.chainGetchu
+            ScrapeChainType.GYUTTO -> scraper.chainGyutto
+        }
+        val list = raw.split(',').map { it.trim().lowercase() }.filter { it.isNotBlank() }
+        return list.ifEmpty { sourceOrderList() }
+    }
+
     /** 需要 CF 过盾的数据源 id 集合 */
     fun cfProxySourceSet(): Set<String> =
         scraper.cfProxySources.split(',').map { it.trim().lowercase() }.filter { it.isNotBlank() }.toSet()
+
+    /** 数据源独立配置（未配置或全空覆盖项时返回 null） */
+    fun sourceConfig(sourceId: String): SourceConfig? =
+        scraper.sources[sourceId.trim().lowercase()]?.takeIf { it.hasAnyOverride() }
+
+    /** 数据源站点地址：独立配置（镜像域名）覆盖优先，否则用内置默认 */
+    fun baseUrlFor(sourceId: String): String {
+        val id = sourceId.trim().lowercase()
+        sourceConfig(id)?.baseUrl?.takeIf { it.isNotBlank() }?.let { return it }
+        return when (id) {
+            "javbus" -> scraper.baseUrlJavbus
+            "javdb" -> scraper.baseUrlJavdb
+            "missav" -> scraper.baseUrlMissav
+            "airav" -> scraper.baseUrlAirav
+            "arzon", "arzon_iv" -> scraper.baseUrlArzon
+            "avsox" -> scraper.baseUrlAvsox
+            "avwiki" -> scraper.baseUrlAvwiki
+            "fanza" -> scraper.baseUrlFanza
+            "fc2" -> scraper.baseUrlFc2
+            "fc2ppvdb" -> scraper.baseUrlFc2ppvdb
+            "gyutto" -> scraper.baseUrlGyutto
+            "jav321" -> scraper.baseUrlJav321
+            "javlib" -> scraper.baseUrlJavlib
+            "javmenu" -> scraper.baseUrlJavmenu
+            "mgstage" -> scraper.baseUrlMgstage
+            "prestige" -> scraper.baseUrlPrestige
+            "dl_getchu" -> scraper.baseUrlDlGetchu
+            "fc2fan" -> scraper.baseUrlFc2fan
+            else -> throw IllegalArgumentException("未知数据源: $sourceId")
+        }
+    }
+
+    /**
+     * 数据源鉴权 Cookie：显式传入优先（如 arzon 年龄验证动态 Cookie），
+     * 其次独立配置，最后用内置默认（javdb 登录 Cookie / mgstage·prestige·fanza 年龄验证）
+     */
+    fun cookieFor(sourceId: String, explicit: String? = null): String? {
+        explicit?.takeIf { it.isNotBlank() }?.let { return it }
+        val id = sourceId.trim().lowercase()
+        sourceConfig(id)?.cookie?.takeIf { it.isNotBlank() }?.let { return it }
+        return when (id) {
+            "javdb" -> scraper.javdbCookie
+            "mgstage" -> "adc=1"
+            "prestige" -> "__age_auth__=true"
+            "fanza" -> "age_check_done=1"
+            else -> null
+        }?.takeIf { it.isNotBlank() }
+    }
 }

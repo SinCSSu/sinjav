@@ -294,8 +294,28 @@ export interface ScrapeTranslateResponse {
   genres?: string | null
 }
 
+/** 单个数据源独立配置；留空/0 = 使用内置默认与全局配置 */
+export interface SourceConfig {
+  baseUrl?: string
+  cookie?: string
+  timeoutMs?: number
+  intervalMs?: number
+}
+
 export type SettingsUpdate = {
   sourceOrder?: string
+  /** 每数据源独立配置（key=数据源 id，整体替换） */
+  sourceConfigs?: Record<string, SourceConfig>
+  /** 刮削链·有码常规（复刻 JavSP：逗号分隔，顺序即字段优先级） */
+  chainNormal?: string
+  /** 刮削链·FC2（FC2-PPV 系番号） */
+  chainFc2?: string
+  /** 刮削链·CID（纯数字内容 ID） */
+  chainCid?: string
+  /** 刮削链·Getchu（GETCHU- 前缀番号） */
+  chainGetchu?: string
+  /** 刮削链·Gyutto（GYUTTO- 前缀番号） */
+  chainGyutto?: string
   userAgent?: string
   javdbCookie?: string
   proxyHost?: string
@@ -334,7 +354,10 @@ export type SettingsUpdate = {
   filenamePattern?: string
 }
 
-export type Settings = SettingsUpdate
+export type Settings = SettingsUpdate & {
+  /** 全部已注册数据源 id（数据源配置表的行） */
+  knownSources?: string[]
+}
 
 // ---------- Emby ----------
 

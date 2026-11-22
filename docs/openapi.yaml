@@ -1613,7 +1613,40 @@ components:
       properties:
         sourceOrder:
           type: string
-          example: 'javbus, javdb'
+          description: |
+            默认数据源优先级（刮削链未配置/全部源无效时回退到此顺序）。可用 id：
+            javbus / javdb / missav（默认启用）；
+            JavSP 移植源（按需启用）：airav, avsox, avwiki, fanza, fc2, fc2ppvdb, fc2fan,
+            jav321, javlib, javmenu, mgstage, prestige, arzon, arzon_iv, gyutto, dl_getchu。
+            多数镜像域名需自行配置 base-url（数据源配置或 base-url-*）；fanza/fc2 系与部分站点需要日本 IP。
+          example: 'javbus, javdb, missav'
+        sourceConfigs:
+          type: object
+          description: 每数据源独立配置（key=数据源 id，整体替换；未配置的源用内置默认）
+          additionalProperties:
+            $ref: '#/components/schemas/SourceConfig'
+        chainNormal:
+          type: string
+          description: |
+            刮削链·有码常规（复刻 JavSP）：ABP-123 等标准番号走此流水线，
+            逗号分隔、顺序即字段优先级。JavSP 默认 airav, avsox, javbus, javdb, javlib, jav321, mgstage, prestige
+          example: 'airav, avsox, javbus, javdb, javlib, jav321, mgstage, prestige'
+        chainFc2:
+          type: string
+          description: 刮削链·FC2（FC2-PPV 系番号）。JavSP 默认 fc2, avsox, javdb, javmenu, fc2ppvdb
+          example: 'fc2, avsox, javdb, javmenu, fc2ppvdb'
+        chainCid:
+          type: string
+          description: 刮削链·CID（纯数字内容 ID）。JavSP 默认仅 fanza
+          example: 'fanza'
+        chainGetchu:
+          type: string
+          description: 刮削链·Getchu（GETCHU- 前缀番号）
+          example: 'dl_getchu'
+        chainGyutto:
+          type: string
+          description: 刮削链·Gyutto（GYUTTO- 前缀番号）
+          example: 'gyutto'
         strategy:
           type: string
           enum: [fallback, merge]
@@ -1921,6 +1954,48 @@ components:
       properties:
         sourceOrder:
           type: string
+        chainNormal:
+          type: string
+          description: 刮削链·有码常规（复刻 JavSP，逗号分隔，顺序即优先级）
+        chainFc2:
+          type: string
+          description: 刮削链·FC2（FC2-PPV 系番号）
+        chainCid:
+          type: string
+          description: 刮削链·CID（纯数字内容 ID）
+        chainGetchu:
+          type: string
+          description: 刮削链·Getchu（GETCHU- 前缀番号）
+        chainGyutto:
+          type: string
+          description: 刮削链·Gyutto（GYUTTO- 前缀番号）
+        sourceConfigs:
+          type: object
+          description: 每数据源独立配置（key=数据源 id）
+          additionalProperties:
+            $ref: '#/components/schemas/SourceConfig'
+        knownSources:
+          type: array
+          description: 全部已注册数据源 id（数据源配置表的行）
+          items:
+            type: string
+
+    SourceConfig:
+      type: object
+      description: 单个数据源独立配置；留空/0 = 使用内置默认与全局配置
+      properties:
+        baseUrl:
+          type: string
+          description: 站点地址（镜像域名），覆盖内置默认
+        cookie:
+          type: string
+          description: 鉴权信息（如 JavDB 登录 Cookie）；留空用内置默认（mgstage adc=1 等年龄验证自动携带）
+        timeoutMs:
+          type: integer
+          description: 请求超时（毫秒）；0 = 全局 timeout-ms
+        intervalMs:
+          type: integer
+          description: 访问间隔（毫秒，按源限速）；0 = 全局 request-interval-ms
         strategy:
           type: string
           enum: [fallback, merge]
