@@ -33,6 +33,12 @@ data class Movie(
     val durationMin: Int?,
     val coverUrl: String?,
     val previewUrls: List<String>,
+    /** 封面实际生效来源（下载成功后回写；多源合并落库时为候选首位来源） */
+    val coverSource: String? = null,
+    /** 剧照来源数据源 id（下载路由用） */
+    val previewSource: String? = null,
+    /** 封面候选列表（JSON 数组 [{"url","source"}]，下载失败自动换下一候选；javdb 沉底） */
+    val coverCandidates: List<top.sincs.sinjav.scraper.CoverCandidate> = emptyList(),
     val plot: String?,
     val source: String?,
     val status: String, // pending | scraped | failed

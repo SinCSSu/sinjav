@@ -3,6 +3,15 @@ package top.sincs.sinjav.scraper
 import org.slf4j.LoggerFactory
 import java.time.LocalDate
 
+/**
+ * 封面候选（复刻 JavSP 的 covers 有序候选列表）：按刮削链优先级排序，
+ * 下载失败/图片无效时自动换下一候选；javdb 封面（站点水印）固定沉底。
+ */
+data class CoverCandidate(
+    val url: String,
+    val source: String? = null,
+)
+
 /** 统一刮削结果模型 */
 data class MovieMetadata(
     val number: String,
@@ -19,6 +28,8 @@ data class MovieMetadata(
     // 图片字段的实际来源数据源 id（多源合并时用于按设置的过盾数据源路由图片下载）
     val coverSource: String? = null,
     val previewSource: String? = null,
+    // 封面候选列表（含 coverUrl 本身，按优先级排序）；下载层沿候选逐个尝试
+    val coverCandidates: List<CoverCandidate> = emptyList(),
     val plot: String? = null,
     val actresses: List<String> = emptyList(),
     val genres: List<String> = emptyList(),

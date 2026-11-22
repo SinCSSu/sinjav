@@ -49,7 +49,10 @@ class ScraperChain(
         val results = scrapeAllSources(number, order)
         return if (results.size > 1) "merged" to merge(results)
         else results.first()
-            .let { (id, meta) -> id to meta.copy(coverSource = id, previewSource = id) }
+            .let { (id, meta) ->
+                val candidates = listOfNotNull(meta.coverUrl?.let { CoverCandidate(it, id) })
+                id to meta.copy(coverSource = id, previewSource = id, coverCandidates = candidates)
+            }
     }
 
     /**
@@ -98,6 +101,10 @@ class ScraperChain(
     private fun merge(sortedResults: List<Pair<String, MovieMetadata>>): MovieMetadata {
         val metas = sortedResults.map { it.second }
         fun <T> pick(sel: (MovieMetadata) -> T?): T? = metas.firstNotNullOfOrNull(sel)
+        // 封面候选列表：各源封面按链序收集（复刻 JavSP covers），javdb 封面固定沉底（站点水印）
+        val candidates = orderCoverCandidates(
+            sortedResults.mapNotNull { (id, meta) -> meta.coverUrl?.let { CoverCandidate(it, id) } },
+        )
         return MovieMetadata(
             number = metas.first().number,
             title = pick { it.title },
@@ -108,14 +115,38 @@ class ScraperChain(
             label = pick { it.label },
             series = pick { it.series },
             durationMin = pick { it.durationMin },
-            coverUrl = pick { it.coverUrl },
-            coverSource = sortedResults.firstOrNull { it.second.coverUrl != null }?.first,
+            coverUrl = candidates.firstOrNull()?.url,
+            coverSource = candidates.firstOrNull()?.source,
             previewUrls = sortedResults.flatMap { it.second.previewUrls }.distinct(),
             previewSource = sortedResults.firstOrNull { it.second.previewUrls.isNotEmpty() }?.first,
+            coverCandidates = candidates,
             plot = pick { it.plot },
             actresses = sortedResults.flatMap { it.second.actresses }.distinct(),
             genres = sortedResults.flatMap { it.second.genres }.distinct(),
         )
+    }
+
+    companion object {
+        /** 封面固定沉底的数据源（站点水印，复刻 JavSP use_javdb_cover: fallback 的固定版） */
+        const val DEMOTED_COVER_SOURCE = "javdb"
+
+        /**
+         * 封面候选排序：chosen（用户多源对比明确选择的封面）置顶（不受沉底规则约束），
+         * 其余候选按传入顺序、javdb 移到末尾；按 URL 去重。
+         */
+        fun orderCoverCandidates(
+            chosen: CoverCandidate?,
+            pool: List<CoverCandidate>,
+        ): List<CoverCandidate> {
+            val rest = pool.filter { it.url != chosen?.url }
+            val orderedRest = rest.filterNot { it.source == DEMOTED_COVER_SOURCE } +
+                rest.filter { it.source == DEMOTED_COVER_SOURCE }
+            return (listOfNotNull(chosen) + orderedRest).distinctBy { it.url }
+        }
+
+        /** 多源合并场景：无用户选择，直接按链序整理（javdb 沉底） */
+        private fun orderCoverCandidates(pool: List<CoverCandidate>): List<CoverCandidate> =
+            orderCoverCandidates(null, pool)
     }
 
     /** 数据源标识（供配置校验） */

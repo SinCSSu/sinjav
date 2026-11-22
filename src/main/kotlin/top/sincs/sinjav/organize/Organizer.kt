@@ -64,6 +64,7 @@ class Organizer(
     private val movies: MovieRepository,
     private val fileRecords: FileRecordRepository,
     private val coverCropper: top.sincs.sinjav.scraper.CoverCropper,
+    private val imageStore: top.sincs.sinjav.scraper.ImageStore,
     private val props: AppProperties,
 ) {
 
@@ -253,19 +254,35 @@ class Organizer(
     }
 
     private fun downloadImages(subDir: Path, movie: Movie, mode: String) {
-        val ref = movie.coverUrl
-        // move 模式下封面也可能已存在于源目录，但直接重新下载最简单可靠
-        movie.coverUrl?.let { url ->
+        val number = movie.number
+        // 优先复用刮削时的本地缓存（省重复下载与限速等待）：poster.jpg（裁剪）+ fanart.jpg（原图）
+        val cachedPoster = imageStore.readPoster(number)
+        val cachedFanart = imageStore.readFanart(number)
+        if (cachedPoster != null && cachedFanart != null) {
             runCatching {
-                // poster 竖版：横版全封套扫描裁取左侧前封面（FC2 不裁）；fanart 保留横版原图（作为背景图）
-                val bytes = http.download(url, referer = ref, source = movie.source)
-                Files.write(subDir.resolve("poster.jpg"), coverCropper.cropFrontCover(movie.number, bytes))
-                Files.write(subDir.resolve("fanart.jpg"), bytes)
-            }.onFailure { log.warn("下载封面失败 {}: {}", url, it.message) }
+                Files.write(subDir.resolve("poster.jpg"), cachedPoster)
+                Files.write(subDir.resolve("fanart.jpg"), cachedFanart)
+            }.onFailure { log.warn("写入整理图片失败 番号={}: {}", number, it.message) }
+        } else {
+            // 缓存不全：按封面候选列表逐个下载（javdb 沉底、valid_pic 校验由 ImageStore 处理）
+            imageStore.downloadCoverOriginal(number, movie.coverUrl, movie.source, movie.coverCandidates)?.let { original ->
+                runCatching {
+                    Files.write(subDir.resolve("fanart.jpg"), original)
+                    Files.write(subDir.resolve("poster.jpg"), coverCropper.cropFrontCover(number, original))
+                }.onFailure { log.warn("写入整理图片失败 番号={}: {}", number, it.message) }
+            } ?: log.warn("封面下载失败（缓存与候选均不可用）番号={}", number)
         }
-        movie.previewUrls.forEachIndexed { i, url ->
-            runCatching { Files.write(subDir.resolve("preview${i + 1}.jpg"), http.download(url, referer = ref, source = movie.source)) }
-                .onFailure { log.warn("下载剧照失败 {}: {}", url, it.message) }
+        // 剧照：缓存优先（previewN.jpg 按序），缺失时按 URL 下载
+        val cachedPreviews = imageStore.readPreviews(number)
+        if (cachedPreviews.isNotEmpty()) {
+            cachedPreviews.forEachIndexed { i, bytes ->
+                runCatching { Files.write(subDir.resolve("preview${i + 1}.jpg"), bytes) }
+            }
+        } else {
+            movie.previewUrls.forEachIndexed { i, url ->
+                runCatching { Files.write(subDir.resolve("preview${i + 1}.jpg"), http.download(url, source = movie.source)) }
+                    .onFailure { log.warn("下载剧照失败 {}: {}", url, it.message) }
+            }
         }
     }
 

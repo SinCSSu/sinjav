@@ -89,10 +89,13 @@ class ScrapeService(
                             coverUrl = meta.coverUrl, previewUrls = meta.previewUrls, plot = plot,
                             source = source,
                             actresses = meta.actresses, genres = genres,
+                            coverSource = meta.coverSource, previewSource = meta.previewSource,
+                            coverCandidates = meta.coverCandidates,
                         )
                         imageStore.downloadAll(
                             number, meta.coverUrl, meta.previewUrls,
                             source = source, coverSource = meta.coverSource, previewSource = meta.previewSource,
+                            coverCandidates = meta.coverCandidates,
                         )
                         log.info("刮削成功 {} 来源={} 标题={}", number, source, titleZh ?: meta.title ?: "—")
                     } catch (e: Exception) {

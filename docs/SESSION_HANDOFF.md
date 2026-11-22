@@ -127,3 +127,27 @@ cd f:/sinJav
 3. 鉴权（API Key / Basic）扩展
 4. 前端对接（消费 docs/openapi.yaml）
 5. 整理模式 symlink 在 Windows 非开发者模式下的错误提示优化
+
+## 8. 2026-11-22 增量：封面候选体系（对齐 JavSP 图片链路）
+
+对齐 JavSP 的 `download_cover` / `process_poster` 语义（详见 `docs/JAVSP_RESEARCH.md` 第三节）：
+
+- **封面候选列表**：`MovieMetadata.coverCandidates`（`CoverCandidate(url, source)`）按刮削链序构建，
+  经 V5 迁移持久化到 `movies.cover_candidates`（JSON 数组 `[{"url","source"}]`）；
+  新列 `cover_source`（实际生效来源，下载成功回写）、`preview_source`（剧照路由）。
+- **javdb 封面固定沉底**（站点水印，JavSP `use_javdb_cover: fallback` 固定版）：
+  `ScraperChain.orderCoverCandidates(chosen, pool)`——用户明确选择的封面置顶（不受沉底约束），其余 javdb 移到末尾，URL 去重。
+- **下载层候选重试 + valid_pic**：`ImageStore.downloadCoverOriginal` 逐候选下载，
+  `isValidImage`（魔数 + 可解码格式 ImageIO 完整解码，拒绝 HTML 错误页）不过换下一候选；
+  全部失败仅 WARN 不影响刮削。成功后 `MovieRepository.markCoverSource` 回写实际来源，
+  缓存写 `poster.jpg`（裁剪）+ `fanart.jpg`（原图，JavSP 同款）。
+- **多源对比落库**：`ScrapeApplyRequest.coverCandidates` 携带各源封面原值，
+  `ScrapeCompareService.apply` 排序后持久化；批量刮削 `ScrapeService` 走 `meta.coverCandidates`。
+- **图片重试端点**：`POST /movies/{number}/images/retry`（MovieController）按持久化候选重下封面/剧照，
+  前端详情抽屉「重下图片」按钮；meta-row 展示封面来源与候选数。
+- **整理复用缓存**：`Organizer.downloadImages` 优先读本地缓存（readPoster/readFanart/readPreviews），
+  缓存不全才走候选下载；截图上传 `saveLocal` 时删除可能不一致的 fanart.jpg。
+
+验证：`gradlew test` 全过（29 个，新增 ScraperChain 候选排序/javdb 沉底、ImageStore 候选回退/valid_pic 用例，
+ImageStoreTest 用临时文件 SQLite——内存库跨连接不可见），`npm run build` 过。openapi.yaml 已同步。
+未做（决策记录）：big_cover 高清猜测（收益窄）、javdb 降级设置项（固定沉底）、AI 人脸裁剪、required_keys 加 cover。

@@ -22,6 +22,9 @@ private val MOVIE_MAPPER = RowMapper { rs, _ ->
         durationMin = rs.getObject("duration_min")?.let { (it as Int) },
         coverUrl = rs.getString("cover_url"),
         previewUrls = rs.getString("preview_urls")?.let { parseJsonArray(it) } ?: emptyList(),
+        coverSource = rs.getString("cover_source"),
+        previewSource = rs.getString("preview_source"),
+        coverCandidates = rs.getString("cover_candidates")?.let { parseCoverCandidates(it) } ?: emptyList(),
         plot = rs.getString("plot"),
         source = rs.getString("source"),
         status = rs.getString("status"),
@@ -34,6 +37,24 @@ private val MOVIE_MAPPER = RowMapper { rs, _ ->
 
 private fun parseJsonArray(json: String): List<String> =
     Regex("\"([^\"]*)\"").findAll(json).map { it.groupValues[1] }.filter { it.isNotBlank() }.toList()
+
+/** cover_candidates JSON 数组（[{"url":"...","source":"..."}]）解析；解析失败返回空列表（不阻断查询） */
+private fun parseCoverCandidates(json: String): List<top.sincs.sinjav.scraper.CoverCandidate> =
+    runCatching {
+        mapper.readTree(json).takeIf { it.isArray }?.mapNotNull { node ->
+            node.get("url")?.asString()?.takeIf { it.isNotBlank() }
+                ?.let { top.sincs.sinjav.scraper.CoverCandidate(it, node.get("source")?.asString()) }
+        } ?: emptyList()
+    }.getOrDefault(emptyList())
+
+private val mapper = tools.jackson.databind.json.JsonMapper.builder().build()
+
+/** cover_candidates 序列化为 JSON 数组（与 preview_urls 一致走手写转义，避免引入完整 Jackson 树写入路径） */
+private fun serializeCoverCandidates(candidates: List<top.sincs.sinjav.scraper.CoverCandidate>): String =
+    candidates.joinToString(",", "[", "]") { c ->
+        """{"url":"${c.url.replace("\"", "\\\"")}","source":""" +
+            (c.source?.let { "\"${it.replace("\"", "\\\"")}\"" } ?: "null") + "}"
+    }
 
 @Repository
 class MovieRepository(private val jdbc: NamedParameterJdbcTemplate) {
@@ -72,6 +93,8 @@ class MovieRepository(private val jdbc: NamedParameterJdbcTemplate) {
         maker: String?, label: String?, series: String?, durationMin: Int?,
         coverUrl: String?, previewUrls: List<String>, plot: String?,
         source: String, actresses: List<String>, genres: List<String>,
+        coverSource: String? = null, previewSource: String? = null,
+        coverCandidates: List<top.sincs.sinjav.scraper.CoverCandidate> = emptyList(),
     ) {
         val params = mapOf(
             "n" to number, "t" to title, "tz" to titleZh, "to" to titleOrig,
@@ -79,12 +102,15 @@ class MovieRepository(private val jdbc: NamedParameterJdbcTemplate) {
             "lb" to label, "se" to series, "du" to durationMin, "cv" to coverUrl,
             "pv" to previewUrls.joinToString(",", "[", "]") { "\"${it.replace("\"", "\\\"")}\"" },
             "pl" to plot, "src" to source,
+            "cs" to coverSource, "ps" to previewSource,
+            "cc" to serializeCoverCandidates(coverCandidates.filter { it.url.isNotBlank() }),
         )
         jdbc.update(
             """
             UPDATE movies SET
                 title = :t, title_zh = :tz, title_orig = :to, release_date = :rd, director = :d, maker = :mk,
                 label = :lb, series = :se, duration_min = :du, cover_url = :cv, preview_urls = :pv,
+                cover_source = :cs, preview_source = :ps, cover_candidates = :cc,
                 plot = :pl, source = :src, status = 'scraped', fail_reason = NULL,
                 scraped_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
             WHERE number = :n
@@ -102,6 +128,14 @@ class MovieRepository(private val jdbc: NamedParameterJdbcTemplate) {
         jdbc.update(
             "UPDATE movies SET status = 'failed', fail_reason = :r, updated_at = CURRENT_TIMESTAMP WHERE number = :n",
             mapOf("n" to number, "r" to reason),
+        )
+    }
+
+    /** 回写封面实际生效来源（下载沿候选列表成功后调用；多候选回退时可能与落库时的首位来源不同） */
+    fun markCoverSource(number: String, source: String?) {
+        jdbc.update(
+            "UPDATE movies SET cover_source = :s, updated_at = CURRENT_TIMESTAMP WHERE number = :n",
+            mapOf("n" to number, "s" to source),
         )
     }
 

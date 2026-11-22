@@ -200,7 +200,7 @@
 import { computed, nextTick, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { api, imgFallback, imgProxy, localImg } from '../api'
-import type { MovieStatus, MovieSummary, ScrapeFieldChoice, ScrapePreviewResponse } from '../api/types'
+import type { CoverCandidate, MovieStatus, MovieSummary, ScrapeFieldChoice, ScrapePreviewResponse } from '../api/types'
 import ImagePreviewViewer from './ImagePreviewViewer.vue'
 
 const visible = defineModel<boolean>({ default: false })
@@ -416,12 +416,17 @@ async function applyCompare() {
   }
   const originalNumber = selected.value.number
   const renamed = preview.value.number !== originalNumber
+  // 封面候选：各源 coverUrl 原值按来源顺序携带（后端做 javdb 沉底/去重后持久化，下载失败自动换源）
+  const coverCandidates: CoverCandidate[] = preview.value.sources
+    .map(s => ({ url: preview.value?.fields['coverUrl']?.[s] ?? '', source: s }))
+    .filter(c => c.url)
   applying.value = true
   try {
     await api.scrapeApply({
       number: preview.value.number,
       recordNumber: originalNumber,
       fields,
+      coverCandidates,
     })
     ElMessage.success(renamed ? `${originalNumber} → ${preview.value.number} 已落库` : `${preview.value.number} 已落库`)
     emit('created')

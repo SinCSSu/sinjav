@@ -61,7 +61,9 @@ class MovieController(
                 number = m.number, title = m.title, titleZh = m.titleZh, titleOrig = m.titleOrig, rawNumber = m.rawNumber,
                 releaseDate = m.releaseDate?.toString(), director = m.director, maker = m.maker,
                 label = m.label, series = m.series, durationMin = m.durationMin, coverUrl = m.coverUrl,
-                previewUrls = m.previewUrls, plot = m.plot, source = m.source, status = m.status,
+                previewUrls = m.previewUrls,
+                coverSource = m.coverSource, previewSource = m.previewSource, coverCandidates = m.coverCandidates,
+                plot = m.plot, source = m.source, status = m.status,
                 failReason = m.failReason, actresses = movies.findActresses(m.id),
                 genres = movies.findGenres(m.id),
                 scrapedAt = m.scrapedAt?.toString(), createdAt = m.createdAt.toString(),
@@ -69,6 +71,25 @@ class MovieController(
                 fileRecords = fileRecords.findByNumber(m.number).map { FileRecordDto.of(it) },
                 embyExists = embyItems.existsByNumber(m.number),
             ),
+        )
+    }
+
+    /**
+     * 重新下载图片：按已持久化的封面候选列表逐个重试（下载失败自动换源），
+     * 剧照按 preview_urls 重下。封面下载全失败后（或手动更换图片后）可调用此端点恢复。
+     */
+    @PostMapping("/movies/{number}/images/retry")
+    fun retryImages(@PathVariable number: String): ResponseEntity<Map<String, Any?>> {
+        val m = movies.findByNumber(number) ?: throw NoSuchElementException("影片不存在: $number")
+        if (m.status != "scraped") throw IllegalArgumentException("影片 $number 未成功刮削，请先刮削再下载图片")
+        imageStore.downloadAll(
+            m.number, m.coverUrl, m.previewUrls,
+            source = m.source, coverSource = m.coverSource, previewSource = m.previewSource,
+            coverCandidates = m.coverCandidates,
+        )
+        val coverSource = movies.findByNumber(m.number)?.coverSource
+        return ResponseEntity.ok(
+            mapOf("number" to m.number, "coverSource" to coverSource, "previewCount" to m.previewUrls.size),
         )
     }
 

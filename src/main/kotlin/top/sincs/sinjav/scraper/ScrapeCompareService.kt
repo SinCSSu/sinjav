@@ -129,6 +129,16 @@ class ScrapeCompareService(
 
         val coverSource = choice("coverUrl")?.source?.takeIf { it != "manual" }
         val previewSource = choice("previewUrls")?.source?.takeIf { it != "manual" }
+        // 封面候选：请求携带的各源封面按优先级排序（所选封面置顶、javdb 沉底）后持久化，
+        // 下载失败自动换下一候选；请求未携带时回退所选封面单候选
+        val chosenCover = coverUrl?.let { top.sincs.sinjav.scraper.CoverCandidate(it, coverSource) }
+        val coverCandidates = ScraperChain.orderCoverCandidates(
+            chosenCover,
+            req.coverCandidates.mapNotNull { c ->
+                c.url.trim().takeIf { it.isNotBlank() }
+                    ?.let { top.sincs.sinjav.scraper.CoverCandidate(it, c.source) }
+            },
+        )
         // 整体来源：标题选择的来源 > 任一非手动来源 > manual
         val primary = choice("title")?.source?.takeIf { it != null && it != "manual" }
             ?: req.fields.values.firstOrNull { !it.source.isNullOrBlank() && it.source != "manual" }?.source
@@ -144,9 +154,20 @@ class ScrapeCompareService(
             coverUrl = coverUrl, previewUrls = previewUrls, plot = plot,
             source = primary,
             actresses = actresses, genres = genres,
+            coverSource = coverCandidates.firstOrNull()?.source ?: coverSource,
+            previewSource = previewSource,
+            coverCandidates = coverCandidates,
         )
-        imageStore.downloadAll(n, coverUrl, previewUrls, primary, coverSource, previewSource)
-        log.info("多源对比落库 {}: source={} 封面来源={} 剧照来源={}", n, primary, coverSource ?: "—", previewSource ?: "—")
+        imageStore.downloadAll(
+            n, coverUrl, previewUrls, primary,
+            coverSource = coverCandidates.firstOrNull()?.source ?: coverSource,
+            previewSource = previewSource,
+            coverCandidates = coverCandidates,
+        )
+        log.info(
+            "多源对比落库 {}: source={} 封面来源={} 剧照来源={} 封面候选={}个",
+            n, primary, coverCandidates.firstOrNull()?.source ?: "—", previewSource ?: "—", coverCandidates.size,
+        )
     }
 
     private fun splitList(value: String?): List<String> =

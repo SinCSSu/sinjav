@@ -7,10 +7,11 @@ import top.sincs.sinjav.config.AppProperties
 
 class ScraperChainTest {
 
-    private class FakeScraper(private val id: String) : Scraper {
+    /** 测试桩：result 为 null 时抛异常（未命中）；否则返回固定元数据 */
+    private class FakeScraper(private val id: String, private val result: MovieMetadata? = null) : Scraper {
         override fun id() = id
         override fun scrape(number: String): MovieMetadata =
-            throw ScrapeException("测试桩：不发起网络请求")
+            result ?: throw ScrapeException("测试桩：不发起网络请求")
     }
 
     private val props = AppProperties()
@@ -43,5 +44,41 @@ class ScraperChainTest {
         val order = emptyChain.chainFor("FC2-PPV-1234567")
         assertTrue(order.isNotEmpty())
         assertEquals(setOf("javbus", "missav"), order.toSet())
+    }
+
+    @Test
+    fun `合并时封面候选按链序构建且 javdb 沉底`() {
+        val scrapers = listOf(
+            FakeScraper("javdb", MovieMetadata(number = "ABP-123", coverUrl = "https://javdb/c.jpg")),
+            FakeScraper(
+                "javbus",
+                MovieMetadata(number = "ABP-123", coverUrl = "https://javbus/c.jpg", previewUrls = listOf("https://javbus/p1.jpg")),
+            ),
+            FakeScraper("airav", MovieMetadata(number = "ABP-123", coverUrl = "https://airav/c.jpg")),
+        )
+        val chain2 = ScraperChain(scrapers, props)
+        // chainNormal 默认 airav → javbus → javdb（三个测试源全部注册命中）
+        val merged = chain2.mergeSources(chain2.scrapeAllSources("ABP-123"))
+        // javdb 封面（站点水印）固定沉底：airav → javbus → javdb
+        assertEquals(
+            listOf("airav", "javbus", "javdb"),
+            merged.coverCandidates.map { it.source },
+        )
+        assertEquals("https://airav/c.jpg", merged.coverUrl)
+        assertEquals("airav", merged.coverSource)
+        assertEquals("javbus", merged.previewSource)
+        assertEquals(listOf("https://javbus/p1.jpg"), merged.previewUrls)
+    }
+
+    @Test
+    fun `候选排序：用户所选封面置顶并去重`() {
+        val pool = listOf(
+            CoverCandidate("https://javbus/c.jpg", "javbus"),
+            CoverCandidate("https://javdb/c.jpg", "javdb"),
+            CoverCandidate("https://missav/c.jpg", "missav"),
+        )
+        val ordered = ScraperChain.orderCoverCandidates(CoverCandidate("https://javdb/c.jpg", "javdb"), pool)
+        // 用户明确选择 javdb → 置顶（覆盖沉底规则）；无重复 URL
+        assertEquals(listOf("javdb", "javbus", "missav"), ordered.map { it.source })
     }
 }

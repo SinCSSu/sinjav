@@ -30,6 +30,7 @@
               </el-tag>
               <span class="hero-actions">
                 <template v-if="detail.status === 'scraped'">
+                  <el-button size="small" :loading="retryingImages" @click="retryImages">重下图片</el-button>
                   <el-button size="small" @click="emit('scrape')">重新刮削</el-button>
                   <el-button size="small" type="primary" @click="emit('organize')">整理</el-button>
                 </template>
@@ -67,6 +68,8 @@
             </div>
             <div class="meta-row">
               <span>数据源 {{ detail.source ?? '—' }}</span>
+              <span v-if="detail.coverSource">封面来源 {{ detail.coverSource }}</span>
+              <span v-if="(detail.coverCandidates?.length ?? 0) > 1">封面候选 {{ detail.coverCandidates!.length }} 个</span>
               <el-tag v-if="detail.status === 'failed'" type="danger" size="small">刮削失败</el-tag>
             </div>
           </div>
@@ -157,6 +160,7 @@
 
 <script setup lang="ts">
 import { ref, watch } from 'vue'
+import { ElMessage } from 'element-plus'
 import { api, imgFallback, imgProxy, localImg } from '../api'
 import type { FileRecord, MovieDetail } from '../api/types'
 import ImagePreviewViewer from './ImagePreviewViewer.vue'
@@ -183,6 +187,22 @@ const emit = defineEmits<{
 
 const detail = ref<MovieDetail | null>(null)
 const error = ref('')
+const retryingImages = ref(false)
+
+/** 重下图片：按持久化封面候选逐个重试（下载失败自动换源），完成后刷新详情 */
+async function retryImages() {
+  if (!detail.value) return
+  retryingImages.value = true
+  try {
+    const res = await api.retryMovieImages(detail.value.number)
+    ElMessage.success(`图片已重新下载${res.coverSource ? `（封面来源 ${res.coverSource}）` : '（封面下载失败，请检查数据源）'}`)
+    await load(detail.value.number)
+  } catch (e) {
+    ElMessage.error(e instanceof Error ? e.message : String(e))
+  } finally {
+    retryingImages.value = false
+  }
+}
 
 // 大图预览
 const viewerVisible = ref(false)

@@ -59,6 +59,12 @@ data class ScrapeFieldChoice(
     val value: String? = null,
 )
 
+/** 封面候选项：URL + 来源数据源 id（多源对比预览各源的封面值，落库时按优先级排序持久化） */
+data class ScrapeCoverCandidate(
+    val url: String,
+    val source: String? = null,
+)
+
 /** 多源对比刮削落库：逐字段应用用户选择的来源/手动值，按输入框当前内容写库并下载图片（不自动翻译） */
 data class ScrapeApplyRequest(
     @field:jakarta.validation.constraints.NotBlank(message = "number 必填")
@@ -69,6 +75,11 @@ data class ScrapeApplyRequest(
      */
     val recordNumber: String? = null,
     val fields: Map<String, ScrapeFieldChoice> = emptyMap(),
+    /**
+     * 封面候选列表（各源 coverUrl 原值）：用户选择的封面置顶、javdb 沉底后持久化，
+     * 下载失败自动换下一候选；省略时仅落库所选封面单候选。
+     */
+    val coverCandidates: List<ScrapeCoverCandidate> = emptyList(),
 )
 
 /**
@@ -242,6 +253,12 @@ data class MovieDetailDto(
     val number: String, val title: String?, val titleZh: String?, val titleOrig: String?, val rawNumber: String?,
     val releaseDate: String?, val director: String?, val maker: String?, val label: String?,
     val series: String?, val durationMin: Int?, val coverUrl: String?, val previewUrls: List<String>,
+    /** 封面实际生效来源（候选回退后可能与首位候选不同） */
+    val coverSource: String? = null,
+    /** 剧照来源数据源 id */
+    val previewSource: String? = null,
+    /** 封面候选列表（按优先级排序，javdb 沉底；下载失败可逐候选重试） */
+    val coverCandidates: List<top.sincs.sinjav.scraper.CoverCandidate> = emptyList(),
     val plot: String?, val source: String?, val status: String, val failReason: String?,
     val actresses: List<String>, val genres: List<String>,
     val scrapedAt: String?, val createdAt: String, val updatedAt: String,

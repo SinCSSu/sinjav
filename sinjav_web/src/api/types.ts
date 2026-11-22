@@ -62,6 +62,12 @@ export interface Movie extends MovieSummary {
   series?: string | null
   durationMin?: number | null
   previewUrls: string[]
+  /** 封面实际生效来源（候选回退后可能与首位候选不同） */
+  coverSource?: string | null
+  /** 剧照来源数据源 id */
+  previewSource?: string | null
+  /** 封面候选列表（按优先级排序，javdb 沉底；下载失败可逐候选重试） */
+  coverCandidates?: CoverCandidate[]
   genres: string[]
   plot?: string | null
   source?: ScraperSource | 'merged' | null
@@ -69,6 +75,12 @@ export interface Movie extends MovieSummary {
   scrapedAt?: string | null
   createdAt: string
   updatedAt: string
+}
+
+/** 封面候选项：URL + 来源数据源 id（下载失败自动换下一候选） */
+export interface CoverCandidate {
+  url: string
+  source?: string | null
 }
 
 export interface MovieDetail extends Movie {
@@ -278,6 +290,8 @@ export interface ScrapeApplyRequest {
   /** 原记录番号；与 number 不同时把该记录改用 number 落库（movies/file_records 同步改番号） */
   recordNumber?: string
   fields: Record<string, ScrapeFieldChoice>
+  /** 封面候选列表（各源 coverUrl 原值）：所选封面置顶、javdb 沉底后持久化，下载失败自动换源 */
+  coverCandidates?: CoverCandidate[]
 }
 
 /** 对比界面手动翻译请求：仅传需要翻译的字段（省略/空白不处理） */

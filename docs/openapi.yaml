@@ -557,6 +557,34 @@ paths:
         '404':
           $ref: '#/components/responses/NotFound'
 
+  /api/v1/movies/{number}/images/retry:
+    post:
+      tags: [movies]
+      operationId: retryMovieImages
+      summary: 重新下载图片（封面候选逐个重试）
+      description: |
+        按持久化的封面候选列表（cover_candidates，javdb 沉底）逐个下载：
+        某候选下载失败或图片无效（valid_pic 校验）自动换下一候选；成功后回写 cover_source 并
+        更新本地缓存 poster.jpg（裁剪）/fanart.jpg（原图）。剧照按 preview_urls 重下。
+        适用于封面下载全部失败后恢复，或手动更换图片来源。
+      parameters:
+        - $ref: '#/components/parameters/NumberPath'
+      responses:
+        '200':
+          description: 下载完成（封面全部失败时不报错，coverSource 为 null）
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  number: { type: string }
+                  coverSource: { type: string, nullable: true, description: 实际生效的封面来源（全部失败为 null） }
+                  previewCount: { type: integer, description: 重下的剧照张数 }
+        '400':
+          description: 影片未成功刮削（先刮削再下载图片）
+        '404':
+          $ref: '#/components/responses/NotFound'
+
   /api/v1/file-records:
     get:
       tags: [file-records]
@@ -1335,7 +1363,23 @@ components:
           description: 字段键 → 来源选择（缺省字段视为留空）
           additionalProperties:
             $ref: '#/components/schemas/ScrapeFieldChoice'
+        coverCandidates:
+          type: array
+          description: 封面候选列表（各源 coverUrl 原值）：所选封面置顶、javdb 沉底后持久化，下载失败自动换下一候选；省略时仅落库所选封面单候选
+          items:
+            $ref: '#/components/schemas/CoverCandidate'
       required: [number]
+
+    CoverCandidate:
+      type: object
+      description: 封面候选项（URL + 来源数据源 id，按优先级排序持久化）
+      properties:
+        url:
+          type: string
+        source:
+          type: string
+          nullable: true
+          description: 来源数据源 id
 
     # ---------- 认证 ----------
     AuthStatus:
@@ -1832,6 +1876,19 @@ components:
               type: array
               items:
                 type: string
+            coverSource:
+              type: string
+              nullable: true
+              description: 封面实际生效来源（候选回退后可能与首位候选不同）
+            previewSource:
+              type: string
+              nullable: true
+              description: 剧照来源数据源 id
+            coverCandidates:
+              type: array
+              description: 封面候选列表（按优先级排序，javdb 沉底；下载失败可逐候选重试）
+              items:
+                $ref: '#/components/schemas/CoverCandidate'
             plot:
               type: string
               nullable: true

@@ -239,6 +239,12 @@ export const api = {
   deleteMovie(number: string) {
     return request<void>(`/movies/${encodeURIComponent(number)}`, { method: 'DELETE' })
   },
+  /** 重新下载图片：按持久化封面候选逐个重试（下载失败自动换源），剧照按 preview_urls 重下 */
+  retryMovieImages(number: string) {
+    return post<{ number: string; coverSource: string | null; previewCount: number }>(
+      `/movies/${encodeURIComponent(number)}/images/retry`,
+    )
+  },
 
   // 文件记录
   listFileRecords(query: FileRecordQuery = {}) {
