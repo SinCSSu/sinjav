@@ -13,7 +13,7 @@
         <h4 class="col-title">扫描目录</h4>
         <DirTreeInput v-model="dirInput">
           <template #append>
-            <el-button type="primary" class="scan-btn" :loading="previewing" @click.stop="doPreview">
+            <el-button type="primary" :loading="previewing" @click.stop="doPreview">
               扫描
             </el-button>
           </template>
@@ -369,19 +369,6 @@ function isPlayable(path: string): boolean {
 .col-left {
   width: 300px;
 }
-/* 扫描按钮：主题靛蓝实底填充 + 白色粗体文字，显眼且与主题协调 */
-.scan-btn {
-  background: var(--el-color-primary) !important;
-  border: 1px solid var(--el-color-primary) !important;
-  color: #fff !important;
-  font-weight: 600;
-}
-.scan-btn:hover,
-.scan-btn:focus {
-  background: var(--el-color-primary-dark-2) !important;
-  border-color: var(--el-color-primary-dark-2) !important;
-  color: #fff !important;
-}
 .opt-row {
   display: flex;
   align-items: center;
@@ -430,16 +417,16 @@ function isPlayable(path: string): boolean {
   align-items: center;
   gap: 8px;
   padding: 8px 10px;
-  border-radius: 8px;
+  border-radius: var(--el-border-radius-small);
   cursor: pointer;
   transition: background 0.15s;
 }
 .result-row:hover {
-  background: rgba(255, 255, 255, 0.55);
+  background: var(--row-hover-bg);
 }
 .result-row.active {
   background: var(--glass-accent);
-  box-shadow: 0 0 0 1px rgba(91, 110, 225, 0.2) inset;
+  box-shadow: 0 0 0 1px var(--glass-accent-border) inset;
 }
 .result-row.removed {
   opacity: 0.45;

@@ -59,8 +59,9 @@
       class="emby-error"
     />
 
-    <el-empty v-if="!embyError && (source === 'emby' ? embyItems : items).length === 0" :description="emptyText" />
+    <el-empty v-if="!embyError && !loading && (source === 'emby' ? embyItems : items).length === 0" :description="emptyText" />
     <template v-else-if="!embyError">
+      <div v-loading="loading" class="movie-wrap">
       <!-- 本地影片卡片 -->
       <div v-if="source === 'local'" class="movie-grid">
         <div v-for="m in items" :key="m.number" class="movie-card" @click="openDetail(m.number)">
@@ -144,6 +145,7 @@
           </div>
         </div>
       </div>
+      </div>
     </template>
 
     <div v-if="totalPages > 1" class="pager">
@@ -199,6 +201,7 @@ const size = ref(24)
 const total = ref(0)
 const items = ref<MovieSummary[]>([])
 const embyItems = ref<EmbyItemSummary[]>([])
+const loading = ref(false)
 
 // Emby 数据源（实时代理，不落库）
 const libraries = ref<EmbyLibrary[]>([])
@@ -313,6 +316,7 @@ async function loadLibraries() {
 
 async function loadEmby() {
   if (!libraryId.value) return
+  loading.value = true
   try {
     const result = await api.listEmbyItems({
       libraryId: libraryId.value,
@@ -327,6 +331,8 @@ async function loadEmby() {
     items.value = []
     total.value = 0
     embyError.value = e instanceof Error ? e.message : String(e)
+  } finally {
+    loading.value = false
   }
 }
 
@@ -336,6 +342,7 @@ function toggleOrder() {
 }
 
 async function load() {
+  loading.value = true
   try {
     const result = await api.listMovies({
       page: page.value,
@@ -351,6 +358,8 @@ async function load() {
     items.value = []
     total.value = 0
     console.error(e)
+  } finally {
+    loading.value = false
   }
 }
 
@@ -412,10 +421,16 @@ onMounted(load)
   transform: translateY(-3px);
   box-shadow: var(--glass-shadow-hover);
 }
+.movie-card:active {
+  transform: translateY(-1px);
+}
+.movie-wrap {
+  min-height: 240px;
+}
 .cover {
   position: relative;
   aspect-ratio: 2 / 3;
-  background: linear-gradient(160deg, rgba(255, 255, 255, 0.6), rgba(200, 214, 255, 0.35));
+  background: var(--cover-placeholder-bg);
 }
 .cover img {
   width: 100%;
@@ -453,6 +468,12 @@ onMounted(load)
 .movie-card:hover .delete-btn {
   opacity: 1;
 }
+/* 触屏设备无 hover：删除按钮常显，保证可达 */
+@media (hover: none) {
+  .delete-btn {
+    opacity: 1;
+  }
+}
 .info {
   padding: 8px 10px 10px;
   flex: 1;
@@ -475,7 +496,7 @@ onMounted(load)
 }
 .title-orig {
   margin-top: 2px;
-  font-size: 11px;
+  font-size: 12px;
   color: var(--el-text-color-secondary);
   overflow: hidden;
   text-overflow: ellipsis;

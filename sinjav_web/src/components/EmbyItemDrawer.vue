@@ -492,7 +492,7 @@ async function applyPreview() {
   border-radius: var(--glass-radius);
   overflow: hidden;
   box-shadow: var(--glass-shadow);
-  background: linear-gradient(160deg, rgba(255, 255, 255, 0.6), rgba(200, 214, 255, 0.35));
+  background: var(--cover-placeholder-bg);
 }
 .cover-wrap img {
   width: 100%;
@@ -609,7 +609,7 @@ async function applyPreview() {
   gap: 6px;
 }
 .provider-chip {
-  font-size: 11px;
+  font-size: 12px;
   padding: 2px 8px;
   border-radius: var(--el-border-radius-round);
   background: var(--glass-bg-soft);

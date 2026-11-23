@@ -250,7 +250,7 @@ async function load(number: string) {
   border-radius: var(--glass-radius);
   overflow: hidden;
   box-shadow: var(--glass-shadow);
-  background: linear-gradient(160deg, rgba(255, 255, 255, 0.6), rgba(200, 214, 255, 0.35));
+  background: var(--cover-placeholder-bg);
 }
 .cover-wrap img {
   width: 100%;
@@ -283,7 +283,7 @@ async function load(number: string) {
   gap: 10px;
 }
 .hero-top .num {
-  font-size: 15px;
+  font-size: 14px;
   font-weight: 700;
   color: var(--el-color-primary);
   letter-spacing: 0.5px;
@@ -365,12 +365,10 @@ async function load(number: string) {
   color: var(--el-text-color-regular);
 }
 
-/* ---------- 区块标题 ---------- */
+/* ---------- 区块标题：间距/字号走全局基线，仅保留左侧主色装饰 ---------- */
 .section-title {
-  margin: 20px 0 10px;
   padding-left: 10px;
   font-size: 14px;
-  font-weight: 600;
   border-left: 3px solid var(--el-color-primary);
   line-height: 1.4;
 }

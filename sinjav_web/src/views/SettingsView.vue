@@ -204,7 +204,7 @@
                   空 = 回退「数据源优先顺序」
                 </span>
               </div>
-              <el-button type="primary" size="small" class="restore-btn" @click="restoreChain(chain)">
+              <el-button type="primary" size="small" @click="restoreChain(chain)">
                 <el-icon style="margin-right: 4px"><RefreshLeft /></el-icon>恢复默认
               </el-button>
             </div>
@@ -858,18 +858,5 @@ onMounted(() => {
 .chain-block-close:hover {
   color: var(--el-color-danger);
 }
-/* 恢复默认：实心主色、白字（对齐 ScanDialog.scan-btn） */
-.restore-btn {
-  margin-left: auto;
-  background: var(--el-color-primary) !important;
-  border: 1px solid var(--el-color-primary) !important;
-  color: #fff !important;
-  font-weight: 600;
-}
-.restore-btn:hover,
-.restore-btn:focus {
-  background: var(--el-color-primary-dark-2) !important;
-  border-color: var(--el-color-primary-dark-2) !important;
-  color: #fff !important;
-}
+/* 恢复默认按钮：type=primary，直接沿用全局主按钮渐变样式 */
 </style>

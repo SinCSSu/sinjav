@@ -307,7 +307,7 @@ async function submit() {
   background: #fff !important;
   box-shadow: 0 0 0 2px rgba(91, 110, 225, 0.35) inset, 0 4px 14px rgba(91, 110, 225, 0.12) !important;
 }
-:deep(.el-input__inner) { height: 42px; font-size: 13.5px; }
+:deep(.el-input__inner) { height: 42px; font-size: 14px; }
 .strength { display: flex; align-items: center; gap: 10px; margin-top: 9px; }
 .strength-bars { display: flex; gap: 4px; flex: 1; }
 .strength-bars i {
@@ -317,22 +317,22 @@ async function submit() {
   background: rgba(120, 130, 165, 0.18);
   transition: background 0.25s;
 }
-.strength-bars i.on.lv-1 { background: #e9a23b; }
-.strength-bars i.on.lv-2 { background: #5b6ee1; }
-.strength-bars i.on.lv-3 { background: #45b984; }
-.strength-label { font-size: 11px; flex-shrink: 0; }
-.strength-label.lv-1 { color: #e9a23b; }
+.strength-bars i.on.lv-1 { background: var(--el-color-warning); }
+.strength-bars i.on.lv-2 { background: var(--el-color-primary); }
+.strength-bars i.on.lv-3 { background: var(--el-color-success); }
+.strength-label { font-size: 12px; flex-shrink: 0; }
+.strength-label.lv-1 { color: var(--el-color-warning); }
 .strength-label.lv-2 { color: var(--el-color-primary); }
-.strength-label.lv-3 { color: #45b984; }
+.strength-label.lv-3 { color: var(--el-color-success); }
 .match-hint {
   display: flex;
   align-items: center;
   gap: 5px;
   margin-top: 8px;
-  font-size: 11px;
-  color: #e26a6a;
+  font-size: 12px;
+  color: var(--el-color-danger);
 }
-.match-hint.ok { color: #45b984; }
+.match-hint.ok { color: var(--el-color-success); }
 .form-error {
   display: flex;
   align-items: center;
@@ -341,9 +341,9 @@ async function submit() {
   margin-bottom: 14px;
   border-radius: 10px;
   font-size: 12px;
-  color: #c74b4b;
-  background: rgba(230, 100, 100, 0.1);
-  border: 1px solid rgba(230, 100, 100, 0.2);
+  color: var(--el-color-danger);
+  background: var(--el-color-danger-light-9);
+  border: 1px solid var(--el-color-danger-light-7);
 }
 .submit {
   width: 100%;
@@ -361,6 +361,10 @@ async function submit() {
 .submit:hover {
   transform: translateY(-2px);
   box-shadow: 0 12px 26px rgba(91, 110, 225, 0.42);
+}
+.submit:active {
+  transform: translateY(0);
+  box-shadow: 0 6px 14px rgba(91, 110, 225, 0.3);
 }
 .btn-arrow { margin-left: 8px; }
 .checking {

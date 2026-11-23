@@ -31,6 +31,10 @@ body {
   --glass-radius: 16px;
   --glass-radius-sm: 10px;
   --glass-accent: rgba(91, 110, 225, 0.14);
+  --glass-accent-border: rgba(91, 110, 225, 0.2);
+  /* 列表行 hover 底色 / 封面占位渐变：多处共用，避免各文件硬编码 */
+  --row-hover-bg: rgba(255, 255, 255, 0.55);
+  --cover-placeholder-bg: linear-gradient(160deg, rgba(255, 255, 255, 0.6), rgba(200, 214, 255, 0.35));
 
   /* 主色：柔和靛蓝，与浅蓝粉渐变背景协调 */
   --el-color-primary: #5b6ee1;
@@ -335,10 +339,16 @@ body::after {
   border-bottom: 1px solid var(--glass-border-soft) !important;
 }
 
-/* 主按钮渐变化，与普通按钮拉开层级 */
+/* 主按钮渐变化，与普通按钮拉开层级。
+   必须 border:none 并让渐变按 border-box 铺满：若保留 1px 透明边框，
+   部分显卡/分数 DPI 下边框环与渐变纹理会分开光栅化，在按钮右缘
+   形成一条与主体色不同的竖线（早期表现为深蓝线，后表现为紫线）。
+   无边框后背景一次绘制成型，任何缩放比下都不会出现接缝 */
 .el-button--primary:not(.is-disabled):not(.is-plain):not(.is-text) {
   background-image: linear-gradient(100deg, var(--el-color-primary), #8b7ce0);
-  border-color: transparent;
+  background-origin: border-box;
+  background-repeat: no-repeat;
+  border: none;
   box-shadow: 0 4px 14px rgba(91, 110, 225, 0.26);
   transition: transform 0.2s, box-shadow 0.2s, filter 0.2s;
 }
@@ -353,6 +363,16 @@ body::after {
   font-size: 12px;
   line-height: 1.6;
   color: var(--el-text-color-secondary);
+}
+
+/* 区块标题基线：页面与抽屉统一节奏；抽屉内可用 scoped 覆盖字号与装饰 */
+.section-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 24px 0 12px;
+  font-size: 16px;
+  font-weight: 600;
 }
 
 .toolbar {

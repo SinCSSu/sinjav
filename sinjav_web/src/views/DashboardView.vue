@@ -2,7 +2,7 @@
   <div>
     <div class="page-header">
       <h2>仪表盘</h2>
-      <div class="toolbar" style="margin-bottom: 0">
+      <div class="toolbar header-toolbar">
         <el-button type="primary" @click="showScan = true">
           <el-icon><Search /></el-icon>扫描
         </el-button>
@@ -16,7 +16,7 @@
     </div>
 
     <el-row :gutter="16">
-      <el-col v-for="card in statCards" :key="card.label" :span="6">
+      <el-col v-for="card in statCards" :key="card.label" :span="6" :sm="6" :xs="12">
         <el-card shadow="never" class="stat-card">
           <div class="stat-value">{{ card.value }}</div>
           <div class="stat-label">{{ card.label }}</div>
@@ -30,7 +30,7 @@
     </h3>
     <el-empty v-if="runningJobs.length === 0" description="暂无运行中的任务" :image-size="80" />
     <el-row v-else :gutter="16">
-      <el-col v-for="job in runningJobs" :key="job.id" :span="8">
+      <el-col v-for="job in runningJobs" :key="job.id" :span="8" :sm="8" :xs="24">
         <el-card shadow="never" class="job-card" @click="router.push('/jobs')">
           <div class="job-head">
             <span>{{ jobTypeLabels[job.type] }} #{{ job.id }}</span>
@@ -133,12 +133,9 @@ onUnmounted(() => {
   color: var(--el-text-color-secondary);
   font-size: 13px;
 }
-.section-title {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 16px;
-  margin: 24px 0 12px;
+/* 页头右侧动作按钮组：不重复 toolbar 自身的下边距 */
+.page-header .header-toolbar {
+  margin-bottom: 0;
 }
 .job-card {
   cursor: pointer;

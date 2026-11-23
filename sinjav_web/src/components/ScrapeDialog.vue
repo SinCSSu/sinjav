@@ -549,16 +549,16 @@ function statusTagType(s: MovieStatus): 'warning' | 'danger' | 'success' {
   align-items: center;
   gap: 8px;
   padding: 8px 10px;
-  border-radius: 8px;
+  border-radius: var(--el-border-radius-small);
   cursor: pointer;
   transition: background 0.15s;
 }
 .movie-row:hover {
-  background: rgba(255, 255, 255, 0.55);
+  background: var(--row-hover-bg);
 }
 .movie-row.active {
   background: var(--glass-accent);
-  box-shadow: 0 0 0 1px rgba(91, 110, 225, 0.2) inset;
+  box-shadow: 0 0 0 1px var(--glass-accent-border) inset;
 }
 .num {
   font-size: 13px;
@@ -609,7 +609,7 @@ function statusTagType(s: MovieStatus): 'warning' | 'danger' | 'success' {
 .thumb {
   height: 90px;
   width: auto;
-  border-radius: 6px;
+  border-radius: var(--el-border-radius-small);
   flex-shrink: 0;
 }
 .zoomable {

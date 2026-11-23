@@ -44,3 +44,11 @@ out/
 /src/main/resources/ca.crt
 # build:boot 生成的前端产物，不入库（Docker 构建时由 web 阶段生成）
 /src/main/resources/static/
+/sinjav_web/.agents/
+/sinjav_web/.github/
+/sinjav_web/.mcp.json
+/sinjav_web/.wl-skills-ui-manifest.json
+/sinjav_web/.wl-ui-profile.json
+/sinjav_web/vite.err.log
+/sinjav_web/vite.log
+/sinjav_web/.wl-skills-ui/

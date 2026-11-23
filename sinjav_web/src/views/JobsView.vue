@@ -23,7 +23,7 @@
       </span>
     </div>
 
-    <el-table :data="items" border stripe>
+    <el-table :data="items" v-loading="loading" border stripe>
       <el-table-column prop="id" label="ID" width="70" />
       <el-table-column label="类型" width="90" align="center">
         <template #default="{ row }">
@@ -140,6 +140,7 @@ const page = ref(1)
 const size = ref(20)
 const total = ref(0)
 const items = ref<Job[]>([])
+const loading = ref(false)
 
 const detailVisible = ref(false)
 const detail = ref<Job | null>(null)
@@ -158,6 +159,7 @@ function search() {
 }
 
 async function load() {
+  loading.value = true
   try {
     const result = await api.listJobs({
       page: page.value,
@@ -169,6 +171,8 @@ async function load() {
     total.value = result.total
   } catch (e) {
     console.error(e)
+  } finally {
+    loading.value = false
   }
 }
 
@@ -230,14 +234,15 @@ onUnmounted(() => {
   border-color: var(--el-color-danger-light-5, rgba(217, 72, 72, 0.4));
 }
 .op-btn:hover {
-  opacity: 0.85;
+  opacity: 1;
+  filter: brightness(0.96);
+}
+.op-btn:active {
+  filter: brightness(0.9);
 }
 .fail {
   color: var(--el-color-danger);
   margin-left: 6px;
-}
-.section-title {
-  margin: 16px 0 8px;
 }
 .params {
   background: var(--glass-bg-soft);

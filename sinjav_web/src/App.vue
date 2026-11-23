@@ -110,7 +110,7 @@ async function logout() {
   align-items: center;
   gap: 8px;
   cursor: pointer;
-  font-size: 15px;
+  font-size: 14px;
   font-weight: 600;
   color: var(--el-text-color-primary);
   padding: 7px 14px;
@@ -169,6 +169,7 @@ async function logout() {
 }
 .menu :deep(.el-menu-item.is-active) {
   background: var(--glass-accent);
+  color: var(--el-color-primary);
   font-weight: 600;
 }
 .main {
