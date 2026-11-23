@@ -20,7 +20,8 @@
 5. **Emby 集成**：在设置页配置 Emby 服务地址和 API Key 后，影片库页可切换到 Emby 数据源，浏览指定媒体库的条目（实时代理，不落库，封面经后端转发、不暴露 API Key）。Emby 条目支持：
    - 直接编辑元数据（标题、简介、类别、标签等）回写 Emby；
    - 「重新刮削」：从条目的文件名/原标题/标题识别番号（识别失败可手动输入），用本应用刮削管线刮取元数据，以与本地刮削一致的逐字段对比界面确认后回写 Emby（不触发 Emby 自身刮削）。
-6. **登录与账号**：单用户登录。首次启动进入初始化向导创建管理员账号（用户名 + 密码，BCrypt 存储）；登录建立 30 天会话 Cookie（HttpOnly、SameSite=Lax，访问自动续期），连续 5 次失败锁定 15 分钟；设置页可验证当前密码后修改用户名/密码。
+6. **演员管理**：演员从「刮削结果的女优字段」和「Emby 条目演员」两条路进来，自动建库。演员页提供头像网格（搜索 + 有/无头像过滤）、演员详情（别名 tag 编辑、所属影片）、批量补全头像（异步任务、可停止）与 Emby 演员同步。头像来自 [Gfriends](https://github.com/gfriends/gfriends) 头像库：点一次「更新 Gfriends 索引」把索引入库，之后**刮削/重刮/Emby 同步收尾都会自动给新演员补头像**（`sinjav.actors.auto-scrape-after-batch`）；别名（中文名/英文名 → 日文名）决定匹配命中率，改完可重抓。已缓存 `Person Id` 的演员还能把头像推回 Emby Person 主图。详见 `docs/guides/actor-management-guide.md`。
+7. **登录与账号**：单用户登录。首次启动进入初始化向导创建管理员账号（用户名 + 密码，BCrypt 存储）；登录建立 30 天会话 Cookie（HttpOnly、SameSite=Lax，访问自动续期），连续 5 次失败锁定 15 分钟；设置页可验证当前密码后修改用户名/密码。
 
 除扫描确认（同步落库）外，刮削、整理等都是后台任务，提交后在「任务」页看进度和失败明细。所有操作都由 API 或界面手动触发，**没有定时任务**，也不会在后台偷偷扫描你的磁盘。（流水线 API `POST /pipeline` 仍保留，可把扫描 → 刮削 → 整理一次串起来，但界面上已无对应按钮。）
 
@@ -120,6 +121,7 @@ docker compose up -d
 ```
 sinjav/
 ├── src/main/kotlin/top/sincs/sinjav/
+│   ├── actor/        演员库：Gfriends 索引/头像抓取、别名归一化、Emby 演员同步
 │   ├── api/          REST 控制器（含认证 AuthController）、DTO、静态资源与本地图片映射
 │   ├── common/       全局异常处理
 │   ├── config/       配置属性、安全配置、认证服务、线程池、运行时设置服务
@@ -135,7 +137,9 @@ sinjav/
 │   └── ca.crt                             过盾代理 CA（可选）
 ├── sinjav_web/       前端源码（Vite 项目）
 ├── docs/
-│   ├── openapi.yaml         完整 API 契约（36 条路径）
+│   ├── openapi.yaml         完整 API 契约（43 条路径）
+│   ├── plans/               功能设计文档（如演员管理）
+│   ├── guides/              面向使用者的功能指南
 │   └── SESSION_HANDOFF.md   开发交接快照，部分描述可能已过时
 ├── Dockerfile        多阶段镜像构建（前端 dist + 后端 bootJar → sinjav:latest）
 ├── docker-compose.yml   sinjav + trawl（CF 过盾代理）+ Redis 联合部署
@@ -144,13 +148,14 @@ sinjav/
 
 ## API
 
-统一前缀 `/api/v1`，除认证接口外均需登录会话；当前共 36 条路径，大致分：
+统一前缀 `/api/v1`，除认证接口外均需登录会话；当前共 43 条路径，大致分：
 
 - **认证**：`GET /auth/status`、`POST /auth/init`、`POST /auth/login`、`POST /auth/logout`、`PUT /auth/credentials`
 - **触发**：`POST /scans`、`/scans/preview`、`/scans/commit`、`/scrape`、`/scrape/preview`、`/scrape/apply`、`/scrape/translate`、`/scrape/manual`（multipart）、`/organize`、`/organize/preview`、`/pipeline`（保留，界面无按钮）
 - **查询**：`GET /movies`、`/movies/{number}`、`DELETE /movies/{number}`、`/file-records`、`/organize/records`、`/jobs`、`/jobs/{jobId}`
 - **配置**：`GET|PUT /settings`、`POST /settings/images/cleanup`
 - **Emby**：`GET /emby/status`、`/emby/libraries`、`/emby/items`、`/emby/items/{id}`、`PUT /emby/items/{id}/metadata`、`POST /emby/items/{id}/rescrape/preview`、`POST /emby/items/{id}/rescrape/apply`、`GET /emby/items/{id}/images/primary`
+- **演员**：`GET /actors`、`GET|PATCH /actors/{id}`、`POST /actors/{id}/scrape-photo`、`POST /actors/scrape-photos`、`POST /actors/sync-emby`、`GET /gfriends/status`、`POST /gfriends/sync`（同义路径 `/actors/gfriends/*`）
 - **文件**：`GET /fs/roots`、`/fs/dirs`、`/videos`（支持 Range 播放）、`/images`（域名白名单代理）
 
 完整请求/响应结构见 `docs/openapi.yaml`。
@@ -160,15 +165,19 @@ sinjav/
 ## 验证
 
 ```bash
-./gradlew test          # 后端单元测试与集成测试
+./gradlew test                  # 后端单元测试与集成测试
+./gradlew jacocoTestReport      # 覆盖率报告（build/reports/jacoco/test/html/index.html）
 cd sinjav_web && npm run typecheck   # 前端类型检查
 ```
 
-后端测试覆盖了番号识别、命名模板、NFO 生成、扫描预览、各站点解析、认证链路与防爆破锁定，以及一条「扫描 → 复制整理 → NFO」的全链路集成测试。
+后端测试覆盖了番号识别、命名模板、NFO 生成、扫描预览、各站点解析、认证链路与防爆破锁定、
+演员管理（Gfriends 索引/头像抓取/别名归一化/Emby 演员同步），以及两条完整链路集成测试：
+「扫描 → 复制整理 → NFO」与「刮削 → 新演员自动补头像 → Emby 同步 → 演员列表 API」。
 
 ## 已知限制
 
 - 刮削器的站点选择器尚未在真实网络环境里充分验证，实际部署时可能需要根据站点改版微调选择器或 Cookie。
 - 单用户、无多用户、无定时任务；设计目标就是本机单人使用。
 - 只有 SQLite 和 PostgreSQL 的迁移脚本，暂无 MySQL 方言。
+- 演员头像只有 Gfriends 一个来源（精确匹配、区分大小写）；演员详情里的「推送到 Emby」按钮尚未实现后端接口（点击提示「开发中」），头像下载成功后会自动推送 Person 主图。
 - `docs/SESSION_HANDOFF.md` 是某次开发的交接快照，里面的测试数量、目录路径等描述可能与当前代码不一致，以源码为准。

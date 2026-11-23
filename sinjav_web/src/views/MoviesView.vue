@@ -179,6 +179,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
+import { useRoute } from 'vue-router'
 import { Delete as DeleteIcon, Search as SearchIcon, SortDown as SortDownIcon, SortUp as SortUpIcon } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { api, embyPosterUrl, imgFallback, imgProxy, localImg } from '../api'
@@ -372,6 +373,19 @@ function openEmbyDetail(id: string) {
   embyDetailId.value = id
   embyDetailVisible.value = true
 }
+
+/**
+ * 外部入口带 `?number=` 跳转（如演员详情弹窗里点所属影片）时自动打开该影片详情抽屉；
+ * 首次进入与同页内 query 变化都覆盖，否则只会落到列表页而看不到详情。
+ */
+const route = useRoute()
+watch(
+  () => route.query.number,
+  (n) => {
+    if (typeof n === 'string' && n) openDetail(n)
+  },
+  { immediate: true },
+)
 
 async function removeMovie(m: MovieSummary) {
   try {

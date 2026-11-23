@@ -2,12 +2,15 @@ package top.sincs.sinjav.emby
 
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
+import top.sincs.sinjav.actor.ActorPhotoService
+import top.sincs.sinjav.actor.ActressService
 import top.sincs.sinjav.api.dto.EmbyImagePushRequest
 import top.sincs.sinjav.api.dto.EmbyImagePushResult
 import top.sincs.sinjav.api.dto.EmbyMetadataUpdate
 import top.sincs.sinjav.api.dto.EmbyRescrapeApplyRequest
 import top.sincs.sinjav.api.dto.EmbyRescrapePreviewDto
 import top.sincs.sinjav.api.dto.ScrapeFieldChoice
+import top.sincs.sinjav.config.AppProperties
 import top.sincs.sinjav.scan.NumberRecognizer
 import top.sincs.sinjav.scraper.CoverCropper
 import top.sincs.sinjav.scraper.HttpClientFactory
@@ -24,6 +27,9 @@ import java.time.LocalDate
  * 应用时按输入框当前内容回写 Emby（不自动翻译：翻译/繁→简转换由前端「翻译」按钮调用
  * /scrape/translate 预先回填，保存即所见）。
  * 同步执行（单次刮削受请求限速影响，可能耗时数十秒）。
+ *
+ * 应用（[apply]）收尾属批次 6 入口 2：把回写的演员并入本地演员库，其中**新演员**再触发一次
+ * 异步头像补全（[ActorPhotoService.scrapePhotosAsync]，不阻塞本请求返回）。
  */
 @Service
 class EmbyRescrapeService(
@@ -34,6 +40,9 @@ class EmbyRescrapeService(
     private val http: HttpClientFactory,
     private val imageStore: ImageStore,
     private val coverCropper: CoverCropper,
+    private val actressService: ActressService,
+    private val actorPhotoService: ActorPhotoService,
+    private val props: AppProperties,
 ) {
     private val log = LoggerFactory.getLogger(EmbyRescrapeService::class.java)
 
@@ -103,8 +112,50 @@ class EmbyRescrapeService(
                 .mapValues { it.value.source },
         )
         emby.updateMetadata(itemId, update)
+        // 收尾（批次 6 入口 2）：本次重刮落库的演员并入本地演员库，新演员触发头像异步补全
+        registerActressesAndScrapePhotos(itemId, actressNames(req.fields))
         return update
     }
+
+    /**
+     * Emby 重刮收尾（批次 6 入口 2）：演员名先归一化并入本地 `actresses` 表，
+     * 再把**本次新建**的演员交给 [ActorPhotoService.scrapePhotosAsync] 异步补头像。
+     *
+     * 为什么要在 Emby 侧重刮时写本地演员库：Emby 重刮只回写 Emby 元数据，本地没有这些演员的
+     * 任何记录就无法给它们补头像；并入本地后头像既能落本地，也能在演员已缓存 `emby_person_id`
+     * 时推回 Emby Person（批次 4）。
+     *
+     * 边界：`sinjav.actors.auto-scrape-after-batch=false` 时整段跳过（不改库、不建任务）；
+     * 任何异常只记 WARN —— 补全是附赠产物，不能改变重刮（已回写 Emby）的结果。
+     */
+    private fun registerActressesAndScrapePhotos(itemId: String, actresses: List<String>) {
+        if (actresses.isEmpty()) return
+        if (!props.actors.autoScrapeAfterBatch) {
+            log.debug("自动补全已关闭（sinjav.actors.auto-scrape-after-batch=false），跳过 {} 位演员处理 itemId={}", actresses.size, itemId)
+            return
+        }
+        val newActressIds = runCatching { actressService.registerAll(actresses) }
+            .onFailure { log.warn("Emby 重刮并入本地演员库失败（不影响重刮结果）itemId={}: {}", itemId, it.message) }
+            .getOrDefault(emptyList())
+        if (newActressIds.isEmpty()) return
+
+        val photoJobId = runCatching {
+            actorPhotoService.scrapePhotosAsync(newActressIds, AUTO_PHOTO_REASON)
+        }.onFailure {
+            log.warn("新演员头像补全触发失败（不影响重刮结果）itemId={}: {}", itemId, it.message, it)
+        }.getOrNull()
+        if (photoJobId != null) {
+            log.info("Emby 重刮完成，触发 {} 位新演员头像补全（任务 jobId={}）", newActressIds.size, photoJobId)
+        } else {
+            log.info("Emby 重刮完成，{} 位新演员均已有头像，无需补全", newActressIds.size)
+        }
+    }
+
+    /** 本次重刮要回写的演员名（与 [toUpdate] 组装 tags 用的是同一份来源值） */
+    private fun actressNames(fields: Map<String, ScrapeFieldChoice>): List<String> =
+        compare.splitListValues(compare.chosenValues(fields)["actresses"])
+            .filter { it.isNotBlank() }
+            .distinct()
 
     // ---------- 图片推送（重新刮削界面「推送封面/推送剧照」） ----------
 
@@ -192,7 +243,8 @@ class EmbyRescrapeService(
         val maker = values["maker"]
         val label = values["label"]
         val series = values["series"]
-        val actresses = compare.splitListValues(values["actresses"])
+        // 演员名与收尾「并入演员库 + 头像补全」共用同一解析（避免两处口径漂移）
+        val actresses = actressNames(fields)
         val genres = compare.splitListValues(values["genres"])
             .filter { !qualityTagRegex.containsMatchIn(it) }
             .filter { it.isNotBlank() }
@@ -217,5 +269,10 @@ class EmbyRescrapeService(
             premiereDate = releaseDate?.toString(),
             productionYear = releaseDate?.year,
         )
+    }
+
+    private companion object {
+        /** 自动补全任务参数里的触发原因（任务列表回溯用） */
+        const val AUTO_PHOTO_REASON = "Emby 重刮自动补全"
     }
 }

@@ -2,10 +2,12 @@ package top.sincs.sinjav.scraper
 
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
+import top.sincs.sinjav.actor.ActorPhotoService
 import top.sincs.sinjav.config.AppProperties
 import top.sincs.sinjav.domain.JobRepository
 import top.sincs.sinjav.domain.MovieRepository
 import top.sincs.sinjav.scan.NumberRecognizer
+import java.util.Collections
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicInteger
 
@@ -24,6 +26,7 @@ class ScrapeService(
     private val translation: TranslationService,
     private val props: AppProperties,
     private val jobControl: top.sincs.sinjav.job.JobControl,
+    private val actorPhotoService: ActorPhotoService,
 ) {
 
     private val log = LoggerFactory.getLogger(ScrapeService::class.java)
@@ -48,6 +51,8 @@ class ScrapeService(
         jobs.setTotalItems(jobId, numbers.size)
         val done = AtomicInteger(0)
         val failed = AtomicInteger(0)
+        // 本次刮削新建的演员 id（批次 6 入口 1）：影片级并发下多线程写入，用同步 Set 收集
+        val newActressIds: MutableSet<Long> = Collections.synchronizedSet(LinkedHashSet())
         // 影片级并发：设置中的「并发数」= 同时刮削的影片数；每个影片内部数据源并发由 ScraperChain 处理
         val executor = Executors.newFixedThreadPool(props.scraper.concurrency.coerceAtLeast(1))
         try {
@@ -78,7 +83,8 @@ class ScrapeService(
                             .filter { it.isNotBlank() && !qualityTagRegex.containsMatchIn(it) }
                             .distinct()
 
-                        movies.markScraped(
+                        // 落库同时拿到「本次新建的演员 id」→ 收尾触发头像自动补全（已存在的演员返回空）
+                        val createdActresses = movies.markScraped(
                             number = number,
                             // 元数据标题统一为「番号-中文标题」（title_orig 保留原题，NFO originaltitle / {title} 模板用）
                             title = (titleZh ?: meta.title)?.let { "$number-$it" },
@@ -92,6 +98,7 @@ class ScrapeService(
                             coverSource = meta.coverSource, previewSource = meta.previewSource,
                             coverCandidates = meta.coverCandidates,
                         )
+                        if (createdActresses.isNotEmpty()) newActressIds.addAll(createdActresses)
                         imageStore.downloadAll(
                             number, meta.coverUrl, meta.previewUrls,
                             source = source, coverSource = meta.coverSource, previewSource = meta.previewSource,
@@ -114,6 +121,42 @@ class ScrapeService(
         }
         if (jobControl.isCancelled(jobId)) throw top.sincs.sinjav.job.JobCancelledException()
         log.info("刮削完成 jobId={} 成功={} 失败={}", jobId, done.get() - failed.get(), failed.get())
+        // 收尾（批次 6 入口 1）：本次新演员的头像补全异步派发，不阻塞本任务落 completed
+        triggerActorPhotoScrape(jobId, newActressIds)
         jobs.finish(jobId, "completed")
+    }
+
+    /**
+     * 把本次刮削新建的演员交给 [ActorPhotoService.scrapePhotosAsync] 补头像（独立异步任务）。
+     *
+     * 约定：
+     * - 无新演员 → 什么都不做（绝大多数重刮场景）；
+     * - `sinjav.actors.auto-scrape-after-batch=false` → 跳过并记日志（新演员留待演员页手动补全）；
+     * - 触发失败只记 WARN：头像补全是附赠产物，绝不能改变刮削任务的结果。
+     */
+    private fun triggerActorPhotoScrape(jobId: Long, newActressIds: Set<Long>) {
+        if (newActressIds.isEmpty()) return
+        if (!props.actors.autoScrapeAfterBatch) {
+            log.info(
+                "批次刮削完成，{} 位新演员头像补全已跳过（sinjav.actors.auto-scrape-after-batch=false，任务 jobId={}）",
+                newActressIds.size, jobId,
+            )
+            return
+        }
+        val photoJobId = runCatching {
+            actorPhotoService.scrapePhotosAsync(newActressIds.toList(), AUTO_PHOTO_REASON)
+        }.onFailure {
+            log.warn("新演员头像补全触发失败（不影响刮削结果）jobId={}: {}", jobId, it.message, it)
+        }.getOrNull()
+        if (photoJobId != null) {
+            log.info("批次刮削完成，触发 {} 位新演员头像补全（任务 jobId={}）", newActressIds.size, photoJobId)
+        } else {
+            log.info("批次刮削完成，{} 位新演员均已有头像，无需补全", newActressIds.size)
+        }
+    }
+
+    private companion object {
+        /** 自动补全任务参数里的触发原因（任务列表回溯用） */
+        const val AUTO_PHOTO_REASON = "批次刮削自动补全"
     }
 }

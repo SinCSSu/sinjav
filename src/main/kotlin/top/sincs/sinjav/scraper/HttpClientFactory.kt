@@ -56,8 +56,12 @@ class HttpClientFactory(private val props: AppProperties) {
     private fun client(source: String? = null): HttpClient =
         if (useCfProxy(source)) cfClient() else defaultClient()
 
-    /** 请求超时：数据源独立配置优先；否则过盾链路单独用 cfTimeoutMs（需等待 CF 挑战，更长） */
-    private fun timeoutFor(source: String?): Duration {
+    /**
+     * 请求超时：显式覆盖 > 数据源独立配置；否则过盾链路单独用 cfTimeoutMs（需等待 CF 挑战，更长）。
+     * 显式覆盖用于大文件（如 Gfriends 索引数 MB、走代理较慢）等需要单独放宽超时的场景。
+     */
+    private fun timeoutFor(source: String?, overrideMs: Long? = null): Duration {
+        overrideMs?.takeIf { it > 0 }?.let { return Duration.ofMillis(it) }
         val perSource = source?.let { props.sourceConfig(it) }?.timeoutMs?.takeIf { it > 0 }
         val ms = perSource ?: if (useCfProxy(source)) props.scraper.cfTimeoutMs else props.scraper.timeoutMs
         return Duration.ofMillis(ms)
@@ -307,11 +311,17 @@ class HttpClientFactory(private val props: AppProperties) {
         }
     }
 
-    fun get(url: String, referer: String? = null, cookie: String? = null, source: String? = null): String {
+    fun get(
+        url: String,
+        referer: String? = null,
+        cookie: String? = null,
+        source: String? = null,
+        timeoutMs: Long? = null,
+    ): String {
         throttle(source)
         try {
             val builder = HttpRequest.newBuilder(URI.create(url))
-                .timeout(timeoutFor(source))
+                .timeout(timeoutFor(source, timeoutMs))
                 .header("User-Agent", props.scraper.userAgent)
                 .header("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
                 .header("Accept-Language", "zh-CN,zh;q=0.9,en;q=0.8")
@@ -326,8 +336,8 @@ class HttpClientFactory(private val props: AppProperties) {
         }
     }
 
-    fun download(url: String, referer: String? = null, source: String? = null): ByteArray =
-        downloadDetailed(url, referer, source).bytes
+    fun download(url: String, referer: String? = null, source: String? = null, timeoutMs: Long? = null): ByteArray =
+        downloadDetailed(url, referer, source, timeoutMs).bytes
 
     /**
      * GET 并返回 (响应体, 最终 URI, 会话 Cookie)。
@@ -405,11 +415,16 @@ class HttpClientFactory(private val props: AppProperties) {
     }
 
     /** 下载二进制资源（图片），返回内容与 Content-Type */
-    fun downloadDetailed(url: String, referer: String? = null, source: String? = null): Downloaded {
+    fun downloadDetailed(
+        url: String,
+        referer: String? = null,
+        source: String? = null,
+        timeoutMs: Long? = null,
+    ): Downloaded {
         throttle(source)
         try {
             val builder = HttpRequest.newBuilder(URI.create(url))
-                .timeout(timeoutFor(source))
+                .timeout(timeoutFor(source, timeoutMs))
                 .header("User-Agent", props.scraper.userAgent)
             builder.header("Referer", referer ?: originOf(url))
             val resp = client(source).send(builder.GET().build(), HttpResponse.BodyHandlers.ofByteArray())

@@ -3,6 +3,8 @@ plugins {
     id 'org.jetbrains.kotlin.plugin.spring' version '2.3.21'
     id 'org.springframework.boot' version '4.1.2'
     id 'io.spring.dependency-management' version '1.1.7'
+    // 覆盖率报告（仅 `./gradlew jacocoTestReport` 时产出，不参与打包与运行）
+    id 'jacoco'
 }
 
 group = 'top.sincs'
@@ -50,4 +52,16 @@ kotlin {
 
 tasks.named('test') {
     useJUnitPlatform()
+}
+
+jacoco {
+    toolVersion = '0.8.13'
+}
+
+/** 覆盖率报告：build/reports/jacoco/test/html/index.html（XML 供 CI 解析） */
+tasks.named('jacocoTestReport') {
+    reports {
+        xml.required = true
+        html.required = true
+    }
 }

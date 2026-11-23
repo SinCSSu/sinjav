@@ -2,11 +2,13 @@ package top.sincs.sinjav.emby
 
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Component
+import top.sincs.sinjav.api.dto.EmbyActor
 import top.sincs.sinjav.api.dto.EmbyItemDetailDto
 import top.sincs.sinjav.api.dto.EmbyItemSummaryDto
 import top.sincs.sinjav.api.dto.EmbyLibraryDto
 import top.sincs.sinjav.api.dto.EmbyMetadataUpdate
 import top.sincs.sinjav.api.dto.EmbyPageDto
+import top.sincs.sinjav.api.dto.EmbyPerson
 import top.sincs.sinjav.config.AppProperties
 import top.sincs.sinjav.scraper.ImageFormats
 import tools.jackson.databind.JsonNode
@@ -199,6 +201,36 @@ class EmbyClient(
         return EmbyPageDto(page = startIndex / limit + 1, size = limit, total = root.path("TotalRecordCount").asLong(0), items = items)
     }
 
+    // ---------- 人物（演员） ----------
+
+    /**
+     * 人物列表（GET /Persons）：演员库同步的辅助接口，用于按名字补全 Person Id。
+     *
+     * Emby 的响应是 `{Items:[...], TotalRecordCount:n}`，部分版本直接返回数组，两种都兼容。
+     * @param searchTerm 名字模糊搜索（空 = 拉全部，注意大库体积较大）
+     */
+    fun listPersons(searchTerm: String? = null): List<EmbyPerson> {
+        val query = buildList {
+            add("Limit=$PERSON_LIMIT")
+            if (!searchTerm.isNullOrBlank()) add("SearchTerm=${urlEncode(searchTerm)}")
+        }.joinToString("&")
+        val root = getJson("/Persons", query)
+        val items = if (root.isArray) children(root) else children(root.path("Items"))
+        return items.mapNotNull { node ->
+            val id = node.path("Id").asString("").trim()
+            val name = node.path("Name").asString("").trim()
+            if (id.isBlank() || name.isBlank()) {
+                null
+            } else {
+                EmbyPerson(
+                    id = id,
+                    name = name,
+                    hasPrimaryImage = node.path("ImageTags").path("Primary").asString("").isNotBlank(),
+                )
+            }
+        }
+    }
+
     /** 条目完整元数据 */
     fun getItem(id: String): EmbyItemDetailDto {
         val node = getJson("/Users/${userId()}/Items/${urlEncode(id)}")
@@ -252,6 +284,14 @@ class EmbyClient(
         val resp = exchangeImage("POST", path, ct, bytes)
         log.info("Emby 图片已上传 itemId={} type={} index={} contentType={} bytes={} -> HTTP {}", id, imageType, index, ct, bytes.size, resp.statusCode())
     }
+    /**
+     * 上传演员头像：POST /Items/{personId}/Images/Primary（Emby Person 条目主图）。
+     * 协议与条目图片完全一致（Base64 字符串体 + 图片 Content-Type），直接复用 [uploadImage]。
+     */
+    fun uploadActorPhoto(personId: String, imageBytes: ByteArray, contentType: String? = null) {
+        uploadImage(id = personId, imageType = "Primary", bytes = imageBytes, contentType = contentType)
+    }
+
     /** 删除指定索引的图片：DELETE /Items/{Id}/Images/{imageType}/{index} */
     fun deleteImage(id: String, imageType: String, index: Int) {
         exchange("DELETE", "/Items/${urlEncode(id)}/Images/${urlEncode(imageType)}/$index")
@@ -301,7 +341,26 @@ class EmbyClient(
             .filterValues { it.isNotBlank() },
         dateCreated = node.path("DateCreated").asString("").ifBlank { null },
         hasImage = node.path("ImageTags").path("Primary").asString("").isNotBlank(),
+        actors = actorsFrom(node.path("People")),
     )
+
+    /**
+     * `People[]` → 演员列表。People 里混有导演/编剧等，故只保留 `Type` 为空或 `Actor` 的项
+     * （Emby 的 JAV 库多数只填 Name/Id，Type 可能缺省，缺省按演员处理）。
+     * `Role` 原样透传（JAV 库通常是 "Actor"，普通影片是角色名）。
+     */
+    private fun actorsFrom(node: JsonNode): List<EmbyActor> =
+        children(node).mapNotNull { person ->
+            val type = person.path("Type").asString("").trim()
+            if (type.isNotEmpty() && !type.equals("Actor", ignoreCase = true)) return@mapNotNull null
+            val id = person.path("Id").asString("").trim()
+            val name = person.path("Name").asString("").trim()
+            if (id.isEmpty() || name.isEmpty()) {
+                null
+            } else {
+                EmbyActor(id = id, name = name, role = person.path("Role").asString("").trim().ifBlank { null })
+            }
+        }
 
     // JsonNode 数值取值（缺失/非数值时返回 null）
     private fun JsonNode.asIntOrNull(): Int? =
@@ -309,4 +368,9 @@ class EmbyClient(
 
     private fun JsonNode.asDoubleOrNull(): Double? =
         if (isNumber) asDouble() else null
+
+    private companion object {
+        /** /Persons 单次返回上限（Emby 默认分页 100 条左右，演员库需要一次拿全） */
+        const val PERSON_LIMIT = 100_000
+    }
 }

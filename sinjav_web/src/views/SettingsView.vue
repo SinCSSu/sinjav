@@ -148,7 +148,7 @@
         </div>
         <template #footer>
           <el-button icon="Close" @click="showSourceDialog = false">取消</el-button>
-          <el-button icon="Check" type="primary" :loading="saving" @click="saveAndClose(showSourceDialog)">保存</el-button>
+          <el-button icon="Check" type="primary" :loading="saving" @click="saveAndClose('source')">保存</el-button>
         </template>
       </el-dialog>
 
@@ -213,7 +213,7 @@
         </el-form>
         <template #footer>
           <el-button icon="Close" @click="showChainDialog = false">取消</el-button>
-          <el-button icon="Check" type="primary" :loading="saving" @click="saveAndClose(showChainDialog)">保存</el-button>
+          <el-button icon="Check" type="primary" :loading="saving" @click="saveAndClose('chain')">保存</el-button>
         </template>
       </el-dialog>
 
@@ -342,9 +342,16 @@ const original = ref<SettingsUpdate>({})
 const showSourceDialog = ref(false)
 const showChainDialog = ref(false)
 
-async function saveAndClose(dialog: { value: boolean }) {
+/**
+ * 保存并关闭弹窗。
+ *
+ * 注意：模板里的 ref 会自动解包成布尔值，所以这里**不能**收 ref（`dialog.value = false` 写的是原始值，
+ * 严格模式下会抛 TypeError、弹窗关不掉）。改为按目标开关关闭。
+ */
+async function saveAndClose(target: 'source' | 'chain') {
   await save()
-  dialog.value = false
+  if (target === 'source') showSourceDialog.value = false
+  else showChainDialog.value = false
 }
 
 // 账号管理（改用户名/密码，需验证当前密码）
@@ -436,7 +443,9 @@ const chains = [
 
 function restoreChain(chain: { key: keyof SettingsUpdate }) {
   const def = JAVSP_CHAIN_DEFAULTS[chain.key as string] ?? ''
-  form[chain.key] = def
+  // chain.key 是 keyof SettingsUpdate 的联合类型（还含 sourceConfigs 等非字符串字段），
+  // 直接用下标赋值会被 TS 判为不可写；chains 里的 key 只会是 chain* 这几个字符串字段，故用 Object.assign 写回
+  Object.assign(form, { [chain.key]: def })
   chainLists[chain.key] = def.split(',').map((s) => s.trim()).filter(Boolean)
 }
 

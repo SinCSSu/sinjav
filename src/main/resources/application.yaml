@@ -75,7 +75,19 @@ sinjav:
   images:
     download: true             # 刮削成功后下载封面/剧照到本地
     dir: ./data/images         # 本地图片目录，Web 端通过 /local-images/{番号}/poster.jpg 访问
+  gfriends:
+    # Gfriends 头像库索引（Filetree.json）；其所在目录同时作为图片 raw 基址，索引内的相对路径按此拼接
+    index-url: "https://raw.githubusercontent.com/gfriends/gfriends/master/Filetree.json"
+    sync-threshold-days: 7     # 索引超过此天数自动重新同步（<=0 = 每次调用都重新同步）
+    enable-proxy: true         # 下载走全局代理（scraper.proxy-host/port，设置页可改）；GitHub raw 通常需代理
+  actors:
+    photo-dir: ./data/actors   # 演员头像本地目录；photo_path 存相对路径 actors/{规范名}.jpg
+    scrape-interval-ms: 1500   # 逐个演员抓取间隔（对齐 MDCx scrap_interval），限速防风控
+    push-to-emby: true         # 头像下载成功后推送到 Emby Person 主图（需演员已缓存 emby_person_id）
+    auto-scrape-after-batch: true  # 批次刮削 / Emby 重刮收尾自动补全本次新演员头像（异步，不阻塞刮削任务）
 
 logging:
   level:
-    top.sincs.sinjav: DEBUG
+    # 默认 INFO（业务关键节点/警告/错误）；代码里的 DEBUG 是排障用的明细（如「某源未命中」「跳过补全」），
+    # 需要定位问题时临时改成 DEBUG 即可，不必改代码
+    top.sincs.sinjav: INFO

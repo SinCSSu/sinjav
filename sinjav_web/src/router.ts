@@ -24,6 +24,12 @@ const router = createRouter({
       meta: { title: '影片库' },
     },
     {
+      path: '/actors',
+      name: 'actors',
+      component: () => import('./views/ActorsView.vue'),
+      meta: { title: '演员管理' },
+    },
+    {
       path: '/file-records',
       name: 'file-records',
       component: () => import('./views/FileRecordsView.vue'),

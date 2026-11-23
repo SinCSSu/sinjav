@@ -53,3 +53,5 @@ out/
 /sinjav_web/vite.log
 /sinjav_web/.wl-skills-ui/
 /sinjav_web/.wl-snapshot/
+# 前端构建校验产物（vite build --outDir .build-check），不入库
+/sinjav_web/.build-check/

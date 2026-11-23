@@ -107,7 +107,30 @@ class ImageStore(
     /**
      * valid_pic 校验（借自 JavSP）：格式魔数可识别 + 可解码格式（JPEG/PNG/GIF/BMP）完整解码，
      * 拒绝 200 响应下的 HTML 错误页/占位图；WebP/AVIF 等魔数可识别但 ImageIO 不可解码的格式按魔数放行。
+     *
+     * 公开版：供头像等其他下载场景复用同一套判定（[downloadCoverOriginal] 内部同样走这里）。
      */
+    fun validPic(bytes: ByteArray): Boolean = isValidImage(bytes)
+
+    /** valid_pic 校验（文件版）：读取落盘文件后按 [validPic] 判定；读取失败视为无效 */
+    fun validPic(path: Path): Boolean =
+        runCatching { Files.readAllBytes(path) }.map { validPic(it) }.getOrDefault(false)
+
+    /**
+     * 下载单张图片并做 valid_pic 校验，返回字节；下载失败或不是有效图片返回 null（不抛异常）。
+     * 与 [downloadAll] 的区别是不绑定 images.dir（供演员头像等需要自定义落盘位置的场景复用）。
+     */
+    fun downloadImage(url: String, referer: String? = null, source: String? = null, timeoutMs: Long? = null): ByteArray? {
+        val bytes = runCatching { http.download(url, referer = referer, source = source, timeoutMs = timeoutMs) }
+            .onFailure { log.warn("图片下载失败 {}: {}", url, it.message) }
+            .getOrNull() ?: return null
+        if (!validPic(bytes)) {
+            log.debug("图片无效（valid_pic 未通过）: {}", url)
+            return null
+        }
+        return bytes
+    }
+
     private fun isValidImage(bytes: ByteArray): Boolean {
         val type = ImageFormats.detect(bytes) ?: return false
         return when (type) {

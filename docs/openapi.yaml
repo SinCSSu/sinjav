@@ -32,6 +32,8 @@ tags:
     description: 运行时配置
   - name: emby
     description: Emby 集成（媒体库浏览、元数据编辑、重新刮削）
+  - name: actors
+    description: 演员库管理（列表/详情/别名/头像刮削/Gfriends 索引/Emby 演员同步）
 
 paths:
   /api/v1/fs/roots:
@@ -1088,6 +1090,181 @@ paths:
         '400':
           description: 无法获取剧照（URL 下载失败且本地无缓存）
 
+  # ---------------------------------------------------------------- 演员管理
+  /api/v1/actors:
+    get:
+      tags: [actors]
+      operationId: listActors
+      summary: 演员分页列表
+      description: |
+        `search` 同时匹配 `name` / `alias` / `actress_aliases.alias`；`hasPhoto` 为三态过滤
+        （true 有头像 / false 无头像 / 缺省不过滤）。`movieCount` 为关联影片数（相关子查询一次取回）。
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+        - name: search
+          in: query
+          description: 演员名 / 规范名 / 别名 模糊匹配（大小写不敏感）
+          schema:
+            type: string
+        - name: hasPhoto
+          in: query
+          description: 头像三态过滤
+          schema:
+            type: boolean
+      responses:
+        '200':
+          description: 演员分页列表
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ActorPage'
+
+  /api/v1/actors/{id}:
+    get:
+      tags: [actors]
+      operationId: getActor
+      summary: 演员详情（含别名与所属影片）
+      parameters:
+        - $ref: '#/components/parameters/ActorIdPath'
+      responses:
+        '200':
+          description: 演员详情
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ActorDetail'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    patch:
+      tags: [actors]
+      operationId: updateActor
+      summary: 编辑规范名与别名（别名全量替换）
+      description: |
+        `alias`：null/省略 = 不修改，空串 = 清空（规范名回退 name）。
+        `aliases`：全量替换，空数组即清空；顺序即 Gfriends 匹配顺序。
+        别名全局唯一，被其他演员占用时返回 400。
+      parameters:
+        - $ref: '#/components/parameters/ActorIdPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ActorUpdateRequest'
+      responses:
+        '200':
+          description: 编辑后的演员详情
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ActorDetail'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/v1/actors/{id}/scrape-photo:
+    post:
+      tags: [actors]
+      operationId: scrapeActorPhoto
+      summary: 单个补全头像（同步）
+      description: |
+        按「规范名 → 别名」顺序匹配 Gfriends 并下载；`photo_path` 为空而本地已有手工放置的
+        `{规范名}.jpg` 时直接登记该文件（不下载、不覆盖用户图片）。
+        `force=true` 时忽略本地已有文件强制重下（前端「重新抓取头像」按钮用）。
+        返回裸 JSON 字符串（枚举名）。
+      parameters:
+        - $ref: '#/components/parameters/ActorIdPath'
+        - name: force
+          in: query
+          description: 是否强制重新下载（覆盖已有头像，旧文件由服务层清理）
+          schema:
+            type: boolean
+            default: false
+      responses:
+        '200':
+          description: 抓取结果
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ActorPhotoScrapeResult'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/v1/actors/scrape-photos:
+    post:
+      tags: [actors]
+      operationId: scrapeActorPhotos
+      summary: 批量补全头像（异步任务）
+      description: |
+        `actorIds` 为空/省略 = 全部缺头像的演员。返回 202 + jobId，进度查 `/jobs/{jobId}`，
+        停止用 `POST /jobs/{jobId}/stop`；同类型任务已在运行时 409。
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ActorPhotoBatchRequest'
+      responses:
+        '202':
+          description: 任务已受理
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ActorJobAccepted'
+        '409':
+          description: 已有同类型任务在运行
+
+  /api/v1/actors/sync-emby:
+    post:
+      tags: [actors]
+      operationId: syncEmbyActors
+      summary: Emby 演员同步（异步任务）
+      description: |
+        遍历 `emby_items` 快照（已识别番号的条目）拉取条目演员，归一化并入本地演员库并回写
+        `emby_person_id`；本次新建的演员再触发 `actor_photo_auto` 任务补头像
+        （受 `sinjav.actors.auto-scrape-after-batch` 控制）。Emby 未配置时任务落 failed。
+      responses:
+        '202':
+          description: 任务已受理
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ActorJobAccepted'
+        '409':
+          description: 已有同类型任务在运行
+
+  /api/v1/gfriends/status:
+    get:
+      tags: [actors]
+      operationId: gfriendsStatus
+      summary: Gfriends 索引状态
+      description: 同时注册为 `/api/v1/actors/gfriends/status`（同义路径）。
+      responses:
+        '200':
+          description: 最后同步时间（null = 从未成功同步）与条目数
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GfriendsStatus'
+
+  /api/v1/gfriends/sync:
+    post:
+      tags: [actors]
+      operationId: syncGfriendsIndex
+      summary: 强制同步 Gfriends 索引（同步执行，可能耗时数十秒）
+      description: |
+        失败不抛 500：返回 `success=false` + `message`，旧索引继续可用。同时注册为
+        `/api/v1/actors/gfriends/sync`。
+      responses:
+        '200':
+          description: 同步结果
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GfriendsSyncResult'
+
 components:
   parameters:
     Page:
@@ -1112,6 +1289,14 @@ components:
       description: 规范化番号，如 ABP-123、FC2-PPV-1234567
       schema:
         type: string
+    ActorIdPath:
+      name: id
+      in: path
+      required: true
+      description: 演员 id（actresses.id）
+      schema:
+        type: integer
+        format: int64
 
   responses:
     NotFound:
@@ -2173,6 +2358,18 @@ components:
         providerIds: { type: object, additionalProperties: { type: string } }
         dateCreated: { type: string, nullable: true }
         hasImage: { type: boolean }
+        actors:
+          type: array
+          description: 条目演员（Emby People 中 Type 为空或 Actor 的项；演员库同步的数据来源）
+          items: { $ref: '#/components/schemas/EmbyActor' }
+
+    EmbyActor:
+      type: object
+      description: 条目演员（Emby People 数组中的一项）
+      properties:
+        id: { type: string, description: Emby Person Id }
+        name: { type: string }
+        role: { type: string, nullable: true, description: Emby 角色名（JAV 库通常是 Actor） }
 
     EmbyMetadataUpdate:
       type: object
@@ -2274,3 +2471,168 @@ components:
                 type: string
               message:
                 type: string
+
+    # ---------- 演员管理 ----------
+    ActorSummary:
+      type: object
+      description: 演员列表行
+      properties:
+        id:
+          type: integer
+          format: int64
+        name:
+          type: string
+          description: 演员名（刮削/同步写入，唯一）
+        alias:
+          type: string
+          nullable: true
+          description: 规范名（Gfriends 匹配名 + 头像文件名）；未设置为 null
+        photoPath:
+          type: string
+          nullable: true
+          description: 本地照片相对路径（如 actors/夢乃あいか.jpg）；前端按 /local-actors/{文件名} 访问
+        movieCount:
+          type: integer
+          format: int64
+          description: 关联影片数
+      required: [id, name, movieCount]
+
+    ActorPage:
+      type: object
+      allOf:
+        - $ref: '#/components/schemas/PageMeta'
+        - type: object
+          properties:
+            items:
+              type: array
+              items:
+                $ref: '#/components/schemas/ActorSummary'
+
+    ActorMovieBrief:
+      type: object
+      description: 演员所属影片的精简视图（详情弹窗卡片）
+      properties:
+        id:
+          type: integer
+          format: int64
+        number:
+          type: string
+        title:
+          type: string
+          nullable: true
+        coverPath:
+          type: string
+          description: 本地封面 Web 路径（/local-images/{番号}/poster.jpg，未缓存时 404）
+      required: [id, number, coverPath]
+
+    ActorDetail:
+      type: object
+      description: 演员详情（演员 + 别名 + 所属影片）
+      properties:
+        id:
+          type: integer
+          format: int64
+        name:
+          type: string
+        alias:
+          type: string
+          nullable: true
+        aliases:
+          type: array
+          description: 别名列表（不含规范名；Gfriends 匹配按此顺序）
+          items:
+            type: string
+        photoPath:
+          type: string
+          nullable: true
+        embyPersonId:
+          type: string
+          nullable: true
+          description: Emby Person Id（同步 Emby 演员时回写）
+        movieCount:
+          type: integer
+          format: int64
+        movies:
+          type: array
+          items:
+            $ref: '#/components/schemas/ActorMovieBrief'
+        updatedAt:
+          type: string
+          format: date-time
+          nullable: true
+      required: [id, name, aliases, movieCount, movies]
+
+    ActorUpdateRequest:
+      type: object
+      description: 编辑演员规范名与别名（PATCH /actors/{id}）
+      properties:
+        alias:
+          type: string
+          nullable: true
+          description: 规范名；省略/null = 不修改，空串 = 清空（回退 name）
+        aliases:
+          type: array
+          description: 别名列表（全量替换；空数组即清空）
+          items:
+            type: string
+
+    ActorPhotoScrapeResult:
+      type: string
+      description: |
+        单演员头像抓取结果（裸 JSON 字符串）：
+        - SUCCESS 命中并下载成功（或采用手工放置的本地文件）
+        - SKIPPED 已有照片且文件仍在
+        - NOT_FOUND Gfriends 索引未命中（含别名逐一尝试）
+        - DOWNLOAD_FAILED 下载失败或 valid_pic 校验不通过
+      enum: [SUCCESS, SKIPPED, NOT_FOUND, DOWNLOAD_FAILED]
+
+    ActorPhotoBatchRequest:
+      type: object
+      description: 批量补全头像请求；actorIds 为空/省略 = 全部缺头像的演员
+      properties:
+        actorIds:
+          type: array
+          items:
+            type: integer
+            format: int64
+
+    ActorJobAccepted:
+      type: object
+      description: 异步任务受理（进度复用 GET /jobs/{jobId}）
+      properties:
+        jobId:
+          type: integer
+          format: int64
+      required: [jobId]
+
+    GfriendsStatus:
+      type: object
+      properties:
+        lastSyncAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: 最后成功同步时间；null = 从未同步
+        indexCount:
+          type: integer
+          format: int64
+          description: 索引条目数（按演员名去重后）
+      required: [indexCount]
+
+    GfriendsSyncResult:
+      type: object
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+          nullable: true
+          description: 失败原因（旧索引仍可用）
+        lastSyncAt:
+          type: string
+          format: date-time
+          nullable: true
+        indexCount:
+          type: integer
+          format: int64
+      required: [success, indexCount]

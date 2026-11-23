@@ -362,6 +362,20 @@ class SinJavApplicationTests {
         assertEquals(HttpStatus.NOT_FOUND, delAgain.statusCode)
     }
 
+    /** 配置绑定：application.yaml 的 gfriends 段应正确读入 AppProperties（GfriendsService 构造日志可复核） */
+    @Autowired
+    lateinit var appProps: top.sincs.sinjav.config.AppProperties
+
+    @Test
+    fun `Gfriends 配置从 application yaml 正确绑定`() {
+        assertEquals(
+            "https://raw.githubusercontent.com/gfriends/gfriends/master/Filetree.json",
+            appProps.gfriends.indexUrl,
+        )
+        assertEquals(7, appProps.gfriends.syncThresholdDays)
+        assertTrue(appProps.gfriends.enableProxy)
+    }
+
     private fun insertFakeScrape(number: String) {
         // 通过应用内 jdbcTemplate 直接写入，模拟刮削结果
         jdbc.update(

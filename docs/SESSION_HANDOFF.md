@@ -151,3 +151,30 @@ cd f:/sinJav
 验证：`gradlew test` 全过（29 个，新增 ScraperChain 候选排序/javdb 沉底、ImageStore 候选回退/valid_pic 用例，
 ImageStoreTest 用临时文件 SQLite——内存库跨连接不可见），`npm run build` 过。openapi.yaml 已同步。
 未做（决策记录）：big_cover 高清猜测（收益窄）、javdb 降级设置项（固定沉底）、AI 人脸裁剪、required_keys 加 cover。
+
+## 9. 2026-11-23 增量：演员管理（8 批次全部完成）
+
+**先读这两份**：设计+交付清单 `docs/plans/2026-11-23-actor-management-design.md`、
+使用指南 `docs/guides/actor-management-guide.md`；API 契约见 `openapi.yaml` 的 tag `actors`。
+
+- **新包 `top.sincs.sinjav.actor`**：`GfriendsService`（Filetree.json 索引→`gfriends_index` 表、
+  按「规范名→别名」精确匹配、下载 + `valid_pic`）、`ActorPhotoService`（单/批量抓取、限速 1.5s、
+  协作式取消、Emby Person 主图推送、**手工放置头像的登记**）、`EmbyActorSyncService`
+  （`emby_items` 快照→条目 People→归一化入库→回写 `emby_person_id`）、
+  `ActressService`（`normalize` 别名归一化 + 列表/详情/别名编辑）、三个 JDBC 仓储。
+- **迁移 V6**：`actresses` 加 `photo_path/alias/emby_person_id/updated_at`，新表 `actress_aliases`（alias 全局唯一）、
+  `gfriends_index`（name 主键）。SQLite 外键默认关闭，删演员需手工级联。
+- **自动补全三入口**（共用 `ActorPhotoService.scrapePhotosAsync`，建 `actor_photo_auto` 任务后立刻返回）：
+  批次刮削收尾（`ScrapeService`，收集 `markScraped` 返回的新演员 id）、Emby 重刮收尾（`EmbyRescrapeService`）、
+  **Emby 演员同步收尾（批次 8 补）**。总开关 `sinjav.actors.auto-scrape-after-batch`。
+- **API（8 个端点）**：`/actors` 列表/详情/PATCH 别名/单个抓取/批量任务/`sync-emby`，
+  `/gfriends/status`+`/gfriends/sync`（同义路径 `/actors/gfriends/*`）；任务类型 `actor_photo_batch`、
+  `emby_actor_sync`、`actor_photo_auto`；静态映射 `/local-actors/**`。
+  **未实现**：`POST /actors/{id}/push-emby`（前端按钮 404 占位，只有下载后自动推送）。
+- **前端**：`ActorsView.vue`（网格/搜索/三态过滤/三个工具栏按钮/任务进度弹窗）、`ActorDetailDialog.vue`
+  （大头像/别名 tag 编辑/所属影片/重抓头像）。
+- **测试**：`ActorManagementIntegrationTest`（真实 Spring 上下文 + Flyway SQLite + 本地 EmbyStub，
+  4 组场景）、`EmbyActorSyncServiceTest`（+3 例触发/开关/无新演员）、`ActorPhotoServiceTest` 等。
+  **`gradlew test` 166 例全绿**（2 例 live 测试需环境变量）；覆盖率 `gradlew jacocoTestReport`
+  → 总体行 63.8%，`actor` 包行 93.6%。
+- **清理**：`GlobalExceptionHandler` 补齐 400/405 映射；应用默认日志级别降为 INFO（DEBUG 仅排障用）。

@@ -96,6 +96,15 @@ class JobRepository(private val jdbc: NamedParameterJdbcTemplate) {
         log.info("任务结束 jobId={} status={}", id, status)
     }
 
+    /**
+     * 任务是否已被取消（jobs.status = 'cancelled'）。
+     *
+     * 与内存态 [top.sincs.sinjav.job.JobControl] 的区别：这里查的是**已落库**的取消结果，
+     * 覆盖「任务被停止后由执行侧落库」与「重启恢复后标记」两种场景；
+     * 运行中的停止请求仍以 JobControl 为准（两者取或）。
+     */
+    fun isCancelled(id: Long): Boolean = findById(id)?.status == "cancelled"
+
     fun existsRunning(type: String): Boolean =
         (jdbc.queryForObject(
             "SELECT count(*) FROM jobs WHERE type = :t AND status = 'running'",

@@ -3,6 +3,8 @@ package top.sincs.sinjav.job
 import org.slf4j.LoggerFactory
 import org.springframework.scheduling.annotation.Async
 import org.springframework.stereotype.Component
+import top.sincs.sinjav.actor.ActorPhotoService
+import top.sincs.sinjav.actor.EmbyActorSyncService
 import top.sincs.sinjav.domain.FileRecordRepository
 import top.sincs.sinjav.emby.EmbyClient
 import top.sincs.sinjav.organize.OrganizeParams
@@ -26,6 +28,8 @@ class JobRunner(
     private val fileRecords: FileRecordRepository,
     private val emby: EmbyClient,
     private val jobControl: JobControl,
+    private val actorPhotoService: ActorPhotoService,
+    private val embyActorSyncService: EmbyActorSyncService,
 ) {
 
     private val log = LoggerFactory.getLogger(JobRunner::class.java)
@@ -51,6 +55,20 @@ class JobRunner(
         jobs.finish(jobId, "completed")
         refreshEmby(jobId)
     }
+
+    /**
+     * 演员头像批量补全（批次 5）：任务状态由 [ActorPhotoService.scrapeAllMissing] 自行落库
+     * （completed / failed / cancelled），这里只兜底未捕获异常。
+     * [actorIds] 为空 → 服务层回退到全部缺头像的演员。
+     */
+    @Async("jobExecutor")
+    open fun runActorPhotoBatch(jobId: Long, actorIds: List<Long>?) = wrap(jobId) {
+        actorPhotoService.scrapeAllMissing(actorIds, jobId)
+    }
+
+    /** Emby 演员同步（批次 5）：任务状态同样由 [EmbyActorSyncService.syncFromEmby] 落库 */
+    @Async("jobExecutor")
+    open fun runEmbyActorSync(jobId: Long) = wrap(jobId) { embyActorSyncService.syncFromEmby(jobId) }
 
     /** 整理完成后触发 Emby 媒体库刷新（未配置 Emby 时跳过；刷新失败不影响整理结果） */
     private fun refreshEmby(jobId: Long) {

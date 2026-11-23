@@ -50,6 +50,20 @@ data class EmbyImagePushRequest(
 /** 图片推送结果：成功上传到 Emby 的图片数 */
 data class EmbyImagePushResult(val pushed: Int)
 
+/** 条目演员（Emby `People[]` 中的一项）；[role] 为 Emby 的角色名，JAV 库通常是 "Actor" */
+data class EmbyActor(
+    val id: String,
+    val name: String,
+    val role: String? = null,
+)
+
+/** Emby Person（`GET /emby/Persons` 的返回项）；[hasPrimaryImage] 标记该人物已有主图 */
+data class EmbyPerson(
+    val id: String,
+    val name: String,
+    val hasPrimaryImage: Boolean = false,
+)
+
 data class EmbyItemDetailDto(
     val id: String,
     val name: String,
@@ -67,6 +81,8 @@ data class EmbyItemDetailDto(
     val providerIds: Map<String, String>,
     val dateCreated: String?,
     val hasImage: Boolean,
+    /** 条目演员（People 中 Type 为空或 Actor 的项）；演员库同步的数据来源 */
+    val actors: List<EmbyActor> = emptyList(),
 )
 
 /** 元数据修改请求：仅提交需要修改的字段，null 不动 */

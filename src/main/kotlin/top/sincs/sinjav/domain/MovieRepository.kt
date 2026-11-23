@@ -87,6 +87,12 @@ class MovieRepository(private val jdbc: NamedParameterJdbcTemplate) {
         return findByNumber(number)!!
     }
 
+    /**
+     * 落库刮削结果（全字段覆盖）。
+     *
+     * @return 本次**新建**的演员 id（已存在的不算），供刮削收尾的「新演员头像自动补全」使用
+     *   （批次 6 入口 1：在循环内收集，比前后快照 diff 更省一次全表查询且不遗漏）
+     */
     fun markScraped(
         number: String,
         title: String?, titleZh: String?, titleOrig: String?, releaseDate: LocalDate?, director: String?,
@@ -95,7 +101,7 @@ class MovieRepository(private val jdbc: NamedParameterJdbcTemplate) {
         source: String, actresses: List<String>, genres: List<String>,
         coverSource: String? = null, previewSource: String? = null,
         coverCandidates: List<top.sincs.sinjav.scraper.CoverCandidate> = emptyList(),
-    ) {
+    ): List<Long> {
         val params = mapOf(
             "n" to number, "t" to title, "tz" to titleZh, "to" to titleOrig,
             "rd" to releaseDate?.let { Date.valueOf(it) }, "d" to director, "mk" to maker,
@@ -116,12 +122,14 @@ class MovieRepository(private val jdbc: NamedParameterJdbcTemplate) {
             WHERE number = :n
             """, params,
         )
-        val movieId = findByNumber(number)?.id ?: return
+        val movieId = findByNumber(number)?.id ?: return emptyList()
         // 全字段覆盖语义：先清除旧关联再插入，避免重刮/多源合并时新旧标签（原语言 + 简体）并存
         jdbc.update("DELETE FROM movie_actresses WHERE movie_id = :id", mapOf("id" to movieId))
         jdbc.update("DELETE FROM movie_genres WHERE movie_id = :id", mapOf("id" to movieId))
-        actresses.forEach { name -> linkActress(movieId, name) }
+        val newActressIds = LinkedHashSet<Long>()
+        actresses.forEach { name -> linkActress(movieId, name)?.let { newActressIds += it } }
         genres.forEach { name -> linkGenre(movieId, name) }
+        return newActressIds.toList()
     }
 
     fun markFailed(number: String, reason: String) {
@@ -163,10 +171,18 @@ class MovieRepository(private val jdbc: NamedParameterJdbcTemplate) {
         return true
     }
 
-    private fun linkActress(movieId: Long, name: String) {
-        jdbc.update(
+    /**
+     * 建立影片-女优关联；actresses.name 不存在时顺带建号。
+     *
+     * @return 本次**新建**演员的 id；演员已存在（或名称为空导致查不到）返回 null
+     */
+    private fun linkActress(movieId: Long, name: String): Long? {
+        val inserted = jdbc.update(
             "INSERT INTO actresses (name) VALUES (:nm) ON CONFLICT (name) DO NOTHING", mapOf("nm" to name),
-        )
+        ) > 0
+        val actressId = jdbc.queryForObject(
+            "SELECT id FROM actresses WHERE name = :nm", mapOf("nm" to name), Long::class.java,
+        ) ?: return null
         jdbc.update(
             """
             INSERT INTO movie_actresses (movie_id, actress_id)
@@ -175,6 +191,7 @@ class MovieRepository(private val jdbc: NamedParameterJdbcTemplate) {
             """,
             mapOf("mid" to movieId, "nm" to name),
         )
+        return if (inserted) actressId else null
     }
 
     private fun linkGenre(movieId: Long, name: String) {

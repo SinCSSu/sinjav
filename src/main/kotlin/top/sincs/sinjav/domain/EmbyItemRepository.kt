@@ -51,6 +51,16 @@ class EmbyItemRepository(private val jdbc: NamedParameterJdbcTemplate) {
         )
     }
 
+    /**
+     * 全部快照条目（按 item_id 升序）。
+     * 供需要逐条目回查 Emby 元数据的场景（如演员同步）使用；番号为空的行不返回。
+     */
+    fun findAll(): List<EmbyItemRecord> =
+        jdbc.query(
+            "SELECT * FROM emby_items WHERE number IS NOT NULL AND number <> '' ORDER BY item_id",
+            emptyMap<String, Any>(), EMBY_ITEM_MAPPER,
+        )
+
     fun existsByNumber(number: String): Boolean =
         findExistingNumbers(listOf(number)).isNotEmpty()
 

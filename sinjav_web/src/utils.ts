@@ -56,6 +56,7 @@ export const recognizeStatusTagTypes: Record<RecognizeStatus, TagType> = {
 
 export const organizeStatusLabels: Record<OrganizeStatus, string> = {
   pending: '待整理',
+  organizing: '整理中',
   organized: '已整理',
   failed: '整理失败',
   skipped: '已跳过',
@@ -63,6 +64,7 @@ export const organizeStatusLabels: Record<OrganizeStatus, string> = {
 
 export const organizeStatusTagTypes: Record<OrganizeStatus, TagType> = {
   pending: 'info',
+  organizing: 'primary',
   organized: 'success',
   failed: 'danger',
   skipped: 'warning',

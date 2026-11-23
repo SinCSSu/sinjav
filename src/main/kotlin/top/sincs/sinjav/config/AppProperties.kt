@@ -115,6 +115,34 @@ data class ImageProps(
     var ttlDays: Int = 3,
 )
 
+/**
+ * 演员头像抓取配置：
+ * - photoDir：本地落盘目录（默认 ./data/actors，Web 端以 /local-actors 暴露）
+ * - scrapeIntervalMs：逐个演员之间的抓取间隔，对齐 MDCx 的 scrap_interval（1.5s），防风控
+ * - pushToEmby：头像下载成功后是否推送到 Emby Person 主图（演员已缓存 emby_person_id 时）
+ * - autoScrapeAfterBatch：批次刮削 / Emby 重刮收尾是否自动补全「本次新演员」的头像
+ *   （关闭后两个入口都不触发，新演员留待演员列表页手动补全）
+ */
+data class ActorProps(
+    var photoDir: String = "./data/actors",
+    var scrapeIntervalMs: Long = 1500,
+    var pushToEmby: Boolean = true,
+    var autoScrapeAfterBatch: Boolean = true,
+)
+
+/**
+ * Gfriends 头像库（github.com/gfriends/gfriends）索引配置：
+ * - indexUrl：Filetree.json 地址；其所在目录同时作为图片 raw 基址（索引内的相对路径按此拼接）
+ * - syncThresholdDays：索引超过该天数自动重新同步；<= 0 = 每次调用都重新同步
+ * - enableProxy：下载是否走全局代理（scraper.proxyHost/proxyPort，可被设置页覆盖）；
+ *   GitHub raw 在部分网络环境需代理才能访问，关闭则直连
+ */
+data class GfriendsConfig(
+    var indexUrl: String = "https://raw.githubusercontent.com/gfriends/gfriends/master/Filetree.json",
+    var syncThresholdDays: Int = 7,
+    var enableProxy: Boolean = true,
+)
+
 @ConfigurationProperties(prefix = "sinjav")
 data class AppProperties(
     val scraper: ScraperProps = ScraperProps(),
@@ -123,6 +151,8 @@ data class AppProperties(
     val emby: EmbyProps = EmbyProps(),
     val async: AsyncProps = AsyncProps(),
     val images: ImageProps = ImageProps(),
+    val gfriends: GfriendsConfig = GfriendsConfig(),
+    val actors: ActorProps = ActorProps(),
 ) {
     fun videoExtensionSet(): Set<String> =
         scan.videoExtensions.split(',').map { it.trim().lowercase() }.filter { it.isNotBlank() }.toSet()

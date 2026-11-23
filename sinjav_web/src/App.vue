@@ -20,6 +20,10 @@
           <el-icon><Film /></el-icon>
           <span>影片库</span>
         </el-menu-item>
+        <el-menu-item index="/actors">
+          <el-icon><User /></el-icon>
+          <span>演员</span>
+        </el-menu-item>
         <el-menu-item index="/file-records">
           <el-icon><Document /></el-icon>
           <span>文件记录</span>

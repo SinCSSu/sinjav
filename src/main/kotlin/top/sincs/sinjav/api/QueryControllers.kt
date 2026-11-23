@@ -170,7 +170,8 @@ class JobController(
         @RequestParam(required = false) type: String?,
         @RequestParam(required = false) status: String?,
     ): PageDto<JobDto> {
-        require(type == null || type in setOf("scan", "scrape", "organize", "pipeline")) { "非法 type" }
+        // 取值范围以 JobType 为准（含演员头像/Emby 演员同步等新类型，避免新增类型后此处漏改）
+        require(type == null || top.sincs.sinjav.job.JobType.fromCode(type) != null) { "非法 type" }
         require(status == null || status in setOf("running", "completed", "failed", "cancelled")) { "非法 status" }
         val pg = page.coerceAtLeast(1)
         val sz = size.coerceIn(1, 200)

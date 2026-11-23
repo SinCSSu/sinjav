@@ -461,3 +461,73 @@ export interface EmbyImagePushRequest {
 export interface EmbyImagePushResult {
   pushed: number
 }
+
+// ---------- 演员 ----------
+
+/** 演员列表行（演员网格卡片）：movieCount 为关联影片数 */
+export interface Actor {
+  id: number
+  name: string
+  /** 规范名（Gfriends 匹配名 + 头像文件名）；未设置为 null */
+  alias: string | null
+  /** 本地头像相对路径（如 `actors/夢乃あいか.jpg`）；未抓取为 null */
+  photoPath: string | null
+  movieCount: number
+}
+
+/** 演员列表分页响应（与 PageDto 对齐） */
+export type ActorListResponse = Paged<Actor>
+
+/** 演员所属影片的精简视图（详情弹窗的影片卡片）：coverPath 为本地封面 Web 路径，封面未下载时该地址 404 */
+export interface MovieBrief {
+  id: number
+  number: string
+  title: string | null
+  coverPath: string
+}
+
+/**
+ * 演员详情（GET /actors/{id}）。
+ *
+ * `aliases` 是别名表内容，**不含**规范名本身（规范名在 `alias`）；`movies` 按影片 id 倒序。
+ */
+export interface ActorDetail {
+  id: number
+  name: string
+  /** 规范名（Gfriends 匹配名 + 头像文件名）；未设置为 null */
+  alias: string | null
+  /** 别名列表（不含规范名本身），Gfriends 匹配按此顺序逐一尝试 */
+  aliases: string[]
+  /** 本地头像相对路径（如 `actors/夢乃あいか.jpg`）；未抓取为 null */
+  photoPath: string | null
+  /** Emby Person Id（已同步 Emby 演员时回写的缓存值） */
+  embyPersonId?: string | null
+  movieCount: number
+  movies: MovieBrief[]
+  updatedAt?: string | null
+}
+
+/**
+ * 演员别名编辑请求（PATCH /actors/{id}）：
+ * `alias` 省略/null = 不修改，空串 = 清空（回退演员名）；`aliases` 全量替换（空数组即清空）。
+ */
+export interface ActorAliasUpdate {
+  alias?: string | null
+  aliases: string[]
+}
+
+/** 单个演员头像抓取结果（POST /actors/{id}/scrape-photo） */
+export type ActorPhotoScrapeResult = 'SUCCESS' | 'SKIPPED' | 'NOT_FOUND' | 'DOWNLOAD_FAILED'
+
+/** 演员异步任务受理：进度复用 GET /jobs/{jobId} */
+export interface ActorJobAccepted {
+  jobId: number
+}
+
+/** Gfriends 索引同步结果：success=false 时 message 说明原因，旧索引仍可用 */
+export interface GfriendsSyncResult {
+  success: boolean
+  message?: string | null
+  lastSyncAt?: string | null
+  indexCount: number
+}

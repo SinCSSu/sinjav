@@ -21,6 +21,11 @@ export default defineConfig({
         target: 'http://localhost:8656',
         changeOrigin: true,
       },
+      // 演员头像静态资源（后端把 sinjav.actors.photo-dir 映射到 /local-actors/**）
+      '/local-actors': {
+        target: 'http://localhost:8656',
+        changeOrigin: true,
+      },
     },
   },
 })
