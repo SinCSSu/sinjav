@@ -1,0 +1,8 @@
+/* wl-skills-ui 化妆模式（legacy-skin-align）覆盖层：element + vendors 两层。
+   刻意不引入 presets/skin 的 tokens 层 —— 其 :root body 块会以 !important
+   强制 --el-color-primary: #002a8f 等品牌值，与本项目品牌色 #5b6ee1 冲突。
+   wl-ui token 结构与色板改由 src/style.css 的 :root 以项目品牌色提供；
+   element/vendors 层全部引用 var(--el-color-primary) 等变量，自动继承项目色板。
+   定制展示页（登录页等）可用 data-wl-ui-skin="off" 按子树豁免。 */
+@use '@agile-team/wl-skills-ui/styles/element' as *;
+@use '@agile-team/wl-skills-ui/styles/vendors' as *;

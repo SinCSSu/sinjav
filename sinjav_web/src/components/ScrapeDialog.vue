@@ -161,9 +161,9 @@
     <template #footer>
       <div class="dialog-footer">
         <template v-if="compareMode">
-          <el-button :disabled="applying" @click="compareMode = false">返回详情</el-button>
+          <el-button icon="View" :disabled="applying" @click="compareMode = false">返回详情</el-button>
           <el-button :loading="translating" :disabled="!preview" @click="translateFields">翻译</el-button>
-          <el-button type="primary" :loading="applying" :disabled="!preview" @click="applyCompare">
+          <el-button icon="Check" type="primary" :loading="applying" :disabled="!preview" @click="applyCompare">
             保存
           </el-button>
         </template>

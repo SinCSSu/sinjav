@@ -2,7 +2,7 @@
   <div>
     <div class="page-header">
       <h2>设置</h2>
-      <el-button type="primary" :loading="saving" @click="save">保存修改</el-button>
+      <el-button icon="Edit" type="primary" :loading="saving" @click="save">保存修改</el-button>
     </div>
 
     <el-skeleton v-if="loading" :rows="10" animated />
@@ -97,14 +97,14 @@
           <el-input v-model="sourceFilter" placeholder="筛选数据源…" clearable size="small" style="width: 180px" />
           <span class="hint">{{ sourceSummary }}</span>
         </div>
-        <el-table
+        <el-table empty-text="暂无数据"
           :data="filteredSourceRows"
           size="small"
           max-height="520"
           :row-class-name="sourceRowClass"
           style="max-width: 1000px"
         >
-          <el-table-column label="数据源" width="150">
+          <el-table-column align="center" label="数据源" width="150">
             <template #default="{ row }">
               <span class="src-id">{{ row.id }}</span>
               <el-tag v-if="defaultEnabledSources.has(row.id)" size="small" type="success" effect="plain" class="src-tag">默认</el-tag>
@@ -119,22 +119,22 @@
               />
             </template>
           </el-table-column>
-          <el-table-column label="站点地址（镜像）">
+          <el-table-column align="center" label="站点地址（镜像）">
             <template #default="{ row }">
               <el-input v-model="row.cfg.baseUrl" placeholder="内置默认" />
             </template>
           </el-table-column>
-          <el-table-column label="鉴权 Cookie" width="200">
+          <el-table-column align="center" label="鉴权 Cookie" width="200">
             <template #default="{ row }">
               <el-input v-model="row.cfg.cookie" placeholder="内置默认" show-password />
             </template>
           </el-table-column>
-          <el-table-column label="超时(ms)" width="125">
+          <el-table-column align="center" label="超时(ms)" width="125">
             <template #default="{ row }">
               <el-input-number v-model="row.cfg.timeoutMs" :min="0" :max="600000" :step="1000" controls-position="right" style="width: 105px" />
             </template>
           </el-table-column>
-          <el-table-column label="间隔(ms)" width="125">
+          <el-table-column align="center" label="间隔(ms)" width="125">
             <template #default="{ row }">
               <el-input-number v-model="row.cfg.intervalMs" :min="0" :max="60000" :step="100" controls-position="right" style="width: 105px" />
             </template>
@@ -147,8 +147,8 @@
           <div>勾选「过盾」的数据源走 CF 过盾代理（需先配置过盾代理地址）</div>
         </div>
         <template #footer>
-          <el-button @click="showSourceDialog = false">取消</el-button>
-          <el-button type="primary" :loading="saving" @click="saveAndClose(showSourceDialog)">保存</el-button>
+          <el-button icon="Close" @click="showSourceDialog = false">取消</el-button>
+          <el-button icon="Check" type="primary" :loading="saving" @click="saveAndClose(showSourceDialog)">保存</el-button>
         </template>
       </el-dialog>
 
@@ -212,8 +212,8 @@
           </el-form-item>
         </el-form>
         <template #footer>
-          <el-button @click="showChainDialog = false">取消</el-button>
-          <el-button type="primary" :loading="saving" @click="saveAndClose(showChainDialog)">保存</el-button>
+          <el-button icon="Close" @click="showChainDialog = false">取消</el-button>
+          <el-button icon="Check" type="primary" :loading="saving" @click="saveAndClose(showChainDialog)">保存</el-button>
         </template>
       </el-dialog>
 
@@ -249,7 +249,7 @@
             />
           </el-form-item>
           <el-form-item label=" ">
-            <el-button type="primary" :loading="savingCred" @click="saveCredentials">保存账号</el-button>
+            <el-button icon="Check" type="primary" :loading="savingCred" @click="saveCredentials">保存账号</el-button>
           </el-form-item>
         </el-form>
       </el-card>
@@ -749,7 +749,7 @@ onMounted(() => {
   height: 26px;
   padding: 0 12px;
   border: 1px solid var(--el-color-primary-light-5);
-  border-radius: 6px;
+  border-radius: var(--el-border-radius-small);
   background: var(--block-bg);
   user-select: none;
   transition: border-color 0.15s, box-shadow 0.15s;
@@ -793,7 +793,7 @@ onMounted(() => {
 .chain-plus-solo {
   margin-left: 0;
   border-left: 1px solid var(--el-border-color);
-  border-radius: 6px;
+  border-radius: var(--el-border-radius-small);
 }
 .chain-plus-solo::before {
   display: none;

@@ -45,7 +45,7 @@
           {{ order === 'desc' ? '降序' : '升序' }}
         </el-button>
         <el-tooltip content="遍历 Emby 媒体库识别番号并写入本地快照，用于标记「已存在于emby」与整理弹窗「已存在」分组" placement="top">
-          <el-button :loading="syncingEmby" @click="syncEmby">同步 Emby</el-button>
+          <el-button icon="Refresh" :loading="syncingEmby" @click="syncEmby">同步 Emby</el-button>
         </el-tooltip>
       </template>
     </div>

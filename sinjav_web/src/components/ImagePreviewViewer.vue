@@ -45,7 +45,7 @@ function onSwitch(idx: number) {
   transform: translateX(-50%);
   z-index: 4000;
   padding: 4px 14px;
-  border-radius: 12px;
+  border-radius: var(--el-border-radius-round);
   background: rgba(0, 0, 0, 0.6);
   color: #fff;
   font-size: 13px;

@@ -39,14 +39,14 @@
       <el-button :icon="SearchIcon" @click="search">查询</el-button>
     </div>
 
-    <el-table :data="items" v-loading="loading" border stripe>
-      <el-table-column prop="id" label="ID" width="70" />
-      <el-table-column prop="fileName" label="文件名" min-width="200" show-overflow-tooltip />
-      <el-table-column prop="sourcePath" label="源路径" min-width="240" show-overflow-tooltip />
-      <el-table-column label="大小" width="90" align="right">
+    <el-table empty-text="暂无数据" :data="items" v-loading="loading" border stripe>
+      <el-table-column align="center" prop="id" label="ID" width="70" show-overflow-tooltip />
+      <el-table-column align="center" prop="fileName" label="文件名" min-width="200" show-overflow-tooltip />
+      <el-table-column align="center" prop="sourcePath" label="源路径" min-width="240" show-overflow-tooltip />
+      <el-table-column label="大小" width="90" align="center">
         <template #default="{ row }">{{ formatFileSize(row.fileSize) }}</template>
       </el-table-column>
-      <el-table-column label="番号" width="140">
+      <el-table-column align="center" label="番号" width="140">
         <template #default="{ row }">
           <span v-if="row.number" class="mono">{{ row.number }}</span>
           <span v-else>-</span>
@@ -66,10 +66,10 @@
           </el-tag>
         </template>
       </el-table-column>
-      <el-table-column prop="targetPath" label="目标路径" min-width="200" show-overflow-tooltip>
+      <el-table-column align="center" prop="targetPath" label="目标路径" min-width="200" show-overflow-tooltip>
         <template #default="{ row }">{{ row.targetPath ?? '-' }}</template>
       </el-table-column>
-      <el-table-column label="入库时间" width="160">
+      <el-table-column align="center" label="入库时间" width="160">
         <template #default="{ row }">{{ formatDateTime(row.createdAt) }}</template>
       </el-table-column>
     </el-table>

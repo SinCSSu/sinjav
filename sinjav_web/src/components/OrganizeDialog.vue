@@ -260,8 +260,8 @@
 
     <template #footer>
       <div class="footer-actions">
-        <el-button @click="visible = false">关闭</el-button>
-        <el-button :disabled="!selected.size" :loading="previewing" @click="previewSelected">
+        <el-button icon="Close" @click="visible = false">关闭</el-button>
+        <el-button icon="View" :disabled="!selected.size" :loading="previewing" @click="previewSelected">
           预览选中
         </el-button>
         <el-button type="primary" :disabled="!selected.size" :loading="submitting" @click="organizeSelected">
@@ -719,7 +719,7 @@ async function organizeAll() {
   width: 44px;
   height: 66px;
   flex-shrink: 0;
-  border-radius: 4px;
+  border-radius: var(--el-border-radius-small);
   overflow: hidden;
   background: var(--cover-placeholder-bg);
 }

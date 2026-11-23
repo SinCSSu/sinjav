@@ -69,7 +69,7 @@
           >
             全选
           </el-checkbox>
-          <el-button type="danger" size="small" :disabled="selectedSet.size === 0" @click="removeSelected">
+          <el-button icon="Delete" type="danger" size="small" :disabled="selectedSet.size === 0" @click="removeSelected">
             移除所选{{ selectedSet.size ? ` (${selectedSet.size})` : '' }}
           </el-button>
         </div>
@@ -165,7 +165,7 @@
 
     <template #footer>
       <div class="dialog-footer">
-        <el-button
+        <el-button icon="Check"
           type="success"
           :loading="committing"
           :disabled="!canConfirm"

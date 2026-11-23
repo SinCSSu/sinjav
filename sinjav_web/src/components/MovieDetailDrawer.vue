@@ -123,27 +123,27 @@
         </div>
 
         <div class="section-title">文件记录（{{ detail.fileRecords.length }}）</div>
-        <el-table :data="detail.fileRecords" size="small" border>
-          <el-table-column prop="fileName" label="文件名" min-width="160" show-overflow-tooltip />
-          <el-table-column label="大小" width="80">
+        <el-table empty-text="暂无数据" :data="detail.fileRecords" size="small" border>
+          <el-table-column align="center" prop="fileName" label="文件名" min-width="160" show-overflow-tooltip />
+          <el-table-column align="center" label="大小" width="80">
             <template #default="{ row }">{{ formatFileSize(row.fileSize) }}</template>
           </el-table-column>
-          <el-table-column label="识别" width="90">
+          <el-table-column align="center" label="识别" width="90">
             <template #default="{ row }: { row: FileRecord }">
               <el-tag :type="recognizeStatusTagTypes[row.recognizeStatus]" size="small">
                 {{ recognizeStatusLabels[row.recognizeStatus] }}
               </el-tag>
             </template>
           </el-table-column>
-          <el-table-column label="整理" width="90">
+          <el-table-column align="center" label="整理" width="90">
             <template #default="{ row }: { row: FileRecord }">
               <el-tag :type="organizeStatusTagTypes[row.organizeStatus]" size="small">
                 {{ organizeStatusLabels[row.organizeStatus] }}
               </el-tag>
             </template>
           </el-table-column>
-          <el-table-column prop="sourcePath" label="本地路径" min-width="180" show-overflow-tooltip />
-          <el-table-column prop="targetPath" label="目标路径" min-width="140" show-overflow-tooltip>
+          <el-table-column align="center" prop="sourcePath" label="本地路径" min-width="180" show-overflow-tooltip />
+          <el-table-column align="center" prop="targetPath" label="目标路径" min-width="140" show-overflow-tooltip>
             <template #default="{ row }">{{ row.targetPath ?? '-' }}</template>
           </el-table-column>
         </el-table>

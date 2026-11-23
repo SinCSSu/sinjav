@@ -1,5 +1,5 @@
 ﻿<template>
-  <div class="auth-page">
+  <div class="auth-page" data-wl-ui-skin="off">
     <div class="ambient ambient-a" />
     <div class="ambient ambient-b" />
     <div class="ambient-ring" />

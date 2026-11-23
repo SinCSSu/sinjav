@@ -97,7 +97,7 @@ function onNodeClick(data: FsNode, node: unknown) {
 .tree-wrap {
   margin-top: 6px;
   border: 1px solid var(--el-border-color-lighter);
-  border-radius: 8px;
+  border-radius: var(--el-border-radius-small);
   padding: 4px;
   background: var(--el-fill-color-blank);
   max-height: 260px;

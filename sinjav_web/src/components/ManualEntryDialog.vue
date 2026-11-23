@@ -102,8 +102,8 @@
       </el-row>
     </el-form>
     <template #footer>
-      <el-button @click="visible = false">取消</el-button>
-      <el-button type="primary" :loading="saving" :disabled="!form.number.trim()" @click="save">
+      <el-button icon="Close" @click="visible = false">取消</el-button>
+      <el-button icon="Check" type="primary" :loading="saving" :disabled="!form.number.trim()" @click="save">
         保存并落库
       </el-button>
     </template>

@@ -23,8 +23,8 @@
       </span>
     </div>
 
-    <el-table :data="items" v-loading="loading" border stripe>
-      <el-table-column prop="id" label="ID" width="70" />
+    <el-table empty-text="暂无数据" :data="items" v-loading="loading" border stripe>
+      <el-table-column align="center" prop="id" label="ID" width="70" show-overflow-tooltip />
       <el-table-column label="类型" width="90" align="center">
         <template #default="{ row }">
           <el-tag size="small">{{ jobTypeLabels[row.type as JobType] }}</el-tag>
@@ -37,7 +37,7 @@
           </el-tag>
         </template>
       </el-table-column>
-      <el-table-column label="进度" min-width="180">
+      <el-table-column align="center" label="进度" min-width="180">
         <template #default="{ row }">
           <el-progress
             :percentage="progressOf(row)"
@@ -45,21 +45,21 @@
           />
         </template>
       </el-table-column>
-      <el-table-column label="明细" width="170">
+      <el-table-column align="center" label="明细" width="170">
         <template #default="{ row }">
           完成 {{ row.doneItems }} / {{ row.totalItems }}
           <span v-if="row.failItems > 0" class="fail">失败 {{ row.failItems }}</span>
         </template>
       </el-table-column>
-      <el-table-column label="开始时间" width="160">
+      <el-table-column align="center" label="开始时间" width="160">
         <template #default="{ row }">{{ formatDateTime(row.startedAt) }}</template>
       </el-table-column>
-      <el-table-column label="耗时" width="100">
+      <el-table-column align="center" label="耗时" width="100">
         <template #default="{ row }">{{ formatDuration(row.startedAt, row.finishedAt) }}</template>
       </el-table-column>
       <el-table-column label="操作" width="150" align="center">
         <template #default="{ row }">
-          <el-button type="primary" plain size="small" class="op-btn" @click="openDetail(row)">
+          <el-button icon="View" type="primary" plain size="small" class="op-btn" @click="openDetail(row)">
             详情
           </el-button>
           <el-button
@@ -111,9 +111,9 @@
 
         <h4 class="section-title">失败明细（{{ detail.errors.length }}）</h4>
         <el-empty v-if="detail.errors.length === 0" description="无失败记录" :image-size="60" />
-        <el-table v-else :data="detail.errors" size="small" border>
-          <el-table-column prop="item" label="失败项" min-width="150" show-overflow-tooltip />
-          <el-table-column prop="reason" label="原因" min-width="180" show-overflow-tooltip />
+        <el-table empty-text="暂无数据" v-else :data="detail.errors" size="small" border>
+          <el-table-column align="center" prop="item" label="失败项" min-width="150" show-overflow-tooltip />
+          <el-table-column align="center" prop="reason" label="原因" min-width="180" show-overflow-tooltip />
         </el-table>
       </template>
     </el-drawer>

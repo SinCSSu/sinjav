@@ -36,14 +36,24 @@ body {
   --row-hover-bg: rgba(255, 255, 255, 0.55);
   --cover-placeholder-bg: linear-gradient(160deg, rgba(255, 255, 255, 0.6), rgba(200, 214, 255, 0.35));
 
-  /* 主色：柔和靛蓝，与浅蓝粉渐变背景协调 */
+  /* 主色：柔和靛蓝，与浅蓝粉渐变背景协调。
+     色阶结构对齐 wl-skills-ui token 规范（light-N 混白、dark-N 混黑），
+     数值保留本项目品牌色 #5b6ee1 —— 不引入 wl-ui tokens 层的 #002a8f 强制覆盖 */
   --el-color-primary: #5b6ee1;
+  --el-color-primary-rgb: 91, 110, 225;
+  --el-color-primary-light-1: #6b7de4;
+  --el-color-primary-light-2: #7c8be7;
   --el-color-primary-light-3: #8b98ec;
+  --el-color-primary-light-4: #9da8ed;
   --el-color-primary-light-5: #adb6f1;
+  --el-color-primary-light-6: #bdc5f3;
   --el-color-primary-light-7: #ced3f6;
   --el-color-primary-light-8: #dee2f9;
   --el-color-primary-light-9: rgba(91, 110, 225, 0.1);
+  --el-color-primary-dark-1: #5263cb;
   --el-color-primary-dark-2: #4858b4;
+  --el-color-primary-dark-3: #404d9e;
+  --el-color-primary-dark-4: #374287;
 
   /* Element Plus 基础变量玻璃化 */
   --el-bg-color-page: transparent;
@@ -66,6 +76,10 @@ body {
   --el-box-shadow-light: var(--glass-shadow);
   --el-box-shadow: var(--glass-shadow-hover);
   --el-font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC',
+    'Microsoft YaHei', sans-serif;
+  /* wl-ui 受管组件字体 token（element 层 typography 以 !important 消费它），
+     取值与 --el-font-family 一致，保持现有渲染不变 */
+  --wk-font-family-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC',
     'Microsoft YaHei', sans-serif;
 }
 

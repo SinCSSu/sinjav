@@ -93,14 +93,14 @@
             </el-form-item>
           </el-form>
           <div class="edit-actions">
-            <el-button type="primary" :loading="saving" @click="save">保存</el-button>
-            <el-button @click="cancelEdit">取消</el-button>
+            <el-button icon="Check" type="primary" :loading="saving" @click="save">保存</el-button>
+            <el-button icon="Close" @click="cancelEdit">取消</el-button>
           </div>
         </template>
 
         <!-- 只读态操作按钮 -->
         <div v-if="!editing && !preview" class="actions">
-          <el-button @click="startEdit">编辑元数据</el-button>
+          <el-button icon="Edit" @click="startEdit">编辑元数据</el-button>
           <el-button type="primary" :loading="refreshing" @click="rescrape">重新刮削</el-button>
         </div>
 
@@ -142,9 +142,9 @@
           <div class="diff-actions">
             <el-button :loading="pushingCover" :disabled="!preview" @click="pushCover">推送封面</el-button>
             <el-button :loading="pushingBackdrops" :disabled="!preview" @click="pushBackdrops">推送剧照</el-button>
-            <el-button @click="preview = null">取消</el-button>
+            <el-button icon="Close" @click="preview = null">取消</el-button>
             <el-button :loading="translating" :disabled="!preview" @click="translateFields">翻译</el-button>
-            <el-button type="primary" :loading="applying" :disabled="allEmpty" @click="applyPreview">
+            <el-button icon="Check" type="primary" :loading="applying" :disabled="allEmpty" @click="applyPreview">
               保存
             </el-button>
           </div>
