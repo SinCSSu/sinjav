@@ -28,6 +28,10 @@ data class MovieMetadata(
     // 图片字段的实际来源数据源 id（多源合并时用于按设置的过盾数据源路由图片下载）
     val coverSource: String? = null,
     val previewSource: String? = null,
+    // 剧照逐张来源（url + source，顺序与 previewUrls 一致）：多源合并时各源剧照会混在一个列表里，
+    // 只留一个 previewSource 会把别的源的图（如 javdb 的 jdbstatic 图床）错发到直连通道；
+    // 随 preview_urls 一起落库（preview_candidates），下载时逐张路由，缺项回退 previewSource
+    val previewCandidates: List<CoverCandidate> = emptyList(),
     // 封面候选列表（含 coverUrl 本身，按优先级排序）；下载层沿候选逐个尝试
     val coverCandidates: List<CoverCandidate> = emptyList(),
     val plot: String? = null,
@@ -35,7 +39,11 @@ data class MovieMetadata(
     val genres: List<String> = emptyList(),
 )
 
-class ScrapeException(message: String, cause: Throwable? = null) : Exception(message, cause)
+/**
+ * 刮削异常。code 为 HTTP 状态码（非 HTTP 故障时为 null）：
+ * 供调用层判定是否属于可重试的瞬时故障（429/5xx），业务层不要依赖 message 文本判断。
+ */
+class ScrapeException(message: String, cause: Throwable? = null, val code: Int? = null) : Exception(message, cause)
 
 interface Scraper {
     /** 数据源标识：javbus / javdb / missav */

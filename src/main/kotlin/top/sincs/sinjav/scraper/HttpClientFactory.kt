@@ -36,15 +36,16 @@ class HttpClientFactory(private val props: AppProperties) {
     @Volatile
     private var cachedClient: HttpClient? = null
 
+    /** 全局 client 缓存 key：(代理 host, 代理 port, 不走代理的域名快照) */
     @Volatile
-    private var cachedProxyKey: Pair<String, Int>? = null
+    private var cachedProxyKey: List<String>? = null
 
-    // CF 过盾代理 client（独立缓存，key = 过盾代理地址 + CA 证书路径）
+    // CF 过盾代理 client（独立缓存，key = 过盾代理地址 + CA 证书路径 + 不走代理的域名快照）
     @Volatile
     private var cachedCfClient: HttpClient? = null
 
     @Volatile
-    private var cachedCfKey: Pair<String, String>? = null
+    private var cachedCfKey: List<String>? = null
 
     /** source 命中过盾数据源且配置了过盾代理 */
     private fun useCfProxy(source: String?): Boolean {
@@ -68,7 +69,7 @@ class HttpClientFactory(private val props: AppProperties) {
     }
 
     private fun defaultClient(): HttpClient {
-        val key = props.scraper.proxyHost to props.scraper.proxyPort
+        val key = listOf(props.scraper.proxyHost, props.scraper.proxyPort.toString(), noProxyKey())
         cachedClient?.takeIf { cachedProxyKey == key }?.let { return it }
         synchronized(this) {
             cachedClient?.takeIf { cachedProxyKey == key }?.let { return it }
@@ -77,7 +78,7 @@ class HttpClientFactory(private val props: AppProperties) {
                 .followRedirects(HttpClient.Redirect.NORMAL)
             val host = props.scraper.proxyHost
             if (host.isNotBlank() && props.scraper.proxyPort > 0) {
-                builder.proxy(ProxySelector.of(InetSocketAddress(host, props.scraper.proxyPort)))
+                builder.proxy(proxySelector(host, props.scraper.proxyPort))
             }
             val created = builder.build()
             cachedClient = created
@@ -86,17 +87,58 @@ class HttpClientFactory(private val props: AppProperties) {
         }
     }
 
+    /**
+     * 不走代理的域名快照（作 client 缓存 key 的一部分）：设置页改了名单后 client 立即重建。
+     */
+    private fun noProxyKey(): String = props.noProxyPatternSet().joinToString("|")
+
+    /**
+     * 代理选择器：域名命中 [ScraperProps.noProxyHosts] 时返回 DIRECT，其余交给代理。
+     * 名单为空时直接返回 JDK 默认选择器（零开销）。
+     */
+    private fun proxySelector(host: String, port: Int): ProxySelector {
+        val delegate = ProxySelector.of(InetSocketAddress(host, port))
+        val patterns = props.noProxyPatternSet()
+        return if (patterns.isEmpty()) delegate else BypassProxySelector(delegate, patterns)
+    }
+
+    /**
+     * 内网/免代理域名的直连选择器：
+     * - `*.a.com` 仅匹配子域（a.com 本身仍走代理）
+     * - `a.com` 匹配本域与全部子域
+     */
+    private class BypassProxySelector(
+        private val delegate: ProxySelector,
+        private val patterns: List<String>,
+    ) : ProxySelector() {
+
+        private fun matches(pattern: String, host: String): Boolean {
+            val bare = pattern.removePrefix("*.")
+            return if (pattern.startsWith("*.")) host.endsWith(".$bare")
+            else host == bare || host.endsWith(".$bare")
+        }
+
+        override fun select(uri: URI?): List<java.net.Proxy> {
+            val host = uri?.host?.lowercase()
+            if (host != null && patterns.any { matches(it, host) }) return listOf(java.net.Proxy.NO_PROXY)
+            return delegate.select(uri)
+        }
+
+        override fun connectFailed(uri: URI?, sa: java.net.SocketAddress?, ioe: java.io.IOException?) =
+            delegate.connectFailed(uri, sa, ioe)
+    }
+
     private fun cfClient(): HttpClient {
-        val key = props.scraper.cfProxyUrl to props.scraper.cfCaCertPath
+        val uri = URI.create(props.scraper.cfProxyUrl.trim())
+        val port = if (uri.port > 0) uri.port else 80
+        val key = listOf(props.scraper.cfProxyUrl, props.scraper.cfCaCertPath, noProxyKey())
         cachedCfClient?.takeIf { cachedCfKey == key }?.let { return it }
         synchronized(this) {
             cachedCfClient?.takeIf { cachedCfKey == key }?.let { return it }
-            val uri = URI.create(props.scraper.cfProxyUrl.trim())
-            val port = if (uri.port > 0) uri.port else 80
             val builder = HttpClient.newBuilder()
                 .connectTimeout(Duration.ofMillis(props.scraper.cfTimeoutMs))
                 .followRedirects(HttpClient.Redirect.NORMAL)
-                .proxy(ProxySelector.of(InetSocketAddress(uri.host, port)))
+                .proxy(proxySelector(uri.host, port))
             sslContextWithCa()?.let { builder.sslContext(it) }
             val created = builder.build()
             cachedCfClient = created
@@ -311,13 +353,45 @@ class HttpClientFactory(private val props: AppProperties) {
         }
     }
 
+    /**
+     * 页面请求失败后的重试次数（图片不重试）。
+     * 只重试瞬时故障：连接/读取异常（含超时）、HTTP 408/429/5xx。
+     * 403/404 这类确定性失败立即放弃——重试只会放大耗时（风控还可能因此升级为封禁）。
+     */
+    private fun pageRetries(): Int = props.scraper.maxRetriesPerItem.coerceIn(0, 3)
+
+    private fun isTransient(e: Throwable): Boolean = when (e) {
+        is java.io.IOException -> true
+        is ScrapeException -> e.code?.let { it == 408 || it == 429 || it >= 500 } ?: false
+        else -> false
+    }
+
+    /**
+     * 页面请求执行体带上限重试。每次重试都重新走 throttle，保持请求间隔不变。
+     * 注意：图片下载（download/downloadDetailed）不套用此包装——坏图重试无收益，
+     * 候选列表本身已在 ImageStore 层做了「换下一候选」的兜底。
+     */
+    private inline fun <T> withPageRetry(url: String, block: () -> T): T {
+        val max = pageRetries()
+        var attempt = 0
+        while (true) {
+            try {
+                return block()
+            } catch (e: Exception) {
+                if (attempt >= max || !isTransient(e)) throw e
+                attempt++
+                log.info("请求失败，重试 {}/{} {}: {}", attempt, max, url, e.message)
+            }
+        }
+    }
+
     fun get(
         url: String,
         referer: String? = null,
         cookie: String? = null,
         source: String? = null,
         timeoutMs: Long? = null,
-    ): String {
+    ): String = withPageRetry(url) {
         throttle(source)
         try {
             val builder = HttpRequest.newBuilder(URI.create(url))
@@ -329,8 +403,10 @@ class HttpClientFactory(private val props: AppProperties) {
             builder.header("Referer", referer ?: originOf(url))
             props.cookieFor(source ?: "", cookie)?.let { builder.header("Cookie", it) }
             val resp = client(source).send(builder.GET().build(), HttpResponse.BodyHandlers.ofString())
-            if (resp.statusCode() != 200) throw ScrapeException(describeHttpFailure(resp.statusCode(), url, resp.body()))
-            return resp.body()
+            if (resp.statusCode() != 200) {
+                throw ScrapeException(describeHttpFailure(resp.statusCode(), url, resp.body()), code = resp.statusCode())
+            }
+            resp.body()
         } finally {
             release()
         }
@@ -349,7 +425,7 @@ class HttpClientFactory(private val props: AppProperties) {
         referer: String? = null,
         cookie: String? = null,
         source: String? = null,
-    ): Triple<String, URI, String?> {
+    ): Triple<String, URI, String?> = withPageRetry(url) {
         throttle(source)
         try {
             val builder = HttpRequest.newBuilder(URI.create(url))
@@ -360,11 +436,13 @@ class HttpClientFactory(private val props: AppProperties) {
             builder                .header("Referer", referer ?: originOf(url))
             props.cookieFor(source ?: "", cookie)?.let { builder.header("Cookie", it) }
             val resp = client(source).send(builder.GET().build(), HttpResponse.BodyHandlers.ofString())
-            if (resp.statusCode() != 200) throw ScrapeException(describeHttpFailure(resp.statusCode(), url, resp.body()))
+            if (resp.statusCode() != 200) {
+                throw ScrapeException(describeHttpFailure(resp.statusCode(), url, resp.body()), code = resp.statusCode())
+            }
             val cookies = resp.headers().allValues("set-cookie")
                 .joinToString("; ") { it.substringBefore(';') }
                 .takeIf { it.isNotBlank() }
-            return Triple(resp.body(), resp.uri(), cookies)
+            Triple(resp.body(), resp.uri(), cookies)
         } finally {
             release()
         }
@@ -376,7 +454,7 @@ class HttpClientFactory(private val props: AppProperties) {
         data: Map<String, String>,
         referer: String? = null,
         source: String? = null,
-    ): String {
+    ): String = withPageRetry(url) {
         throttle(source)
         try {
             val form = data.entries.joinToString("&") {
@@ -390,8 +468,10 @@ class HttpClientFactory(private val props: AppProperties) {
             props.cookieFor(source ?: "", null)?.let { builder.header("Cookie", it) }
             builder.POST(HttpRequest.BodyPublishers.ofString(form))
             val resp = client(source).send(builder.build(), HttpResponse.BodyHandlers.ofString())
-            if (resp.statusCode() != 200) throw ScrapeException(describeHttpFailure(resp.statusCode(), url, resp.body()))
-            return resp.body()
+            if (resp.statusCode() != 200) {
+                throw ScrapeException(describeHttpFailure(resp.statusCode(), url, resp.body()), code = resp.statusCode())
+            }
+            resp.body()
         } finally {
             release()
         }
@@ -414,21 +494,26 @@ class HttpClientFactory(private val props: AppProperties) {
         }
     }
 
-    /** 下载二进制资源（图片），返回内容与 Content-Type */
+    /**
+     * 下载二进制资源（图片），返回内容与 Content-Type。
+     * 图片不重试（失败由 ImageStore 的候选回退兜底），且走独立的图片限速通道：
+     * 图片是独立 CDN（dmm/jdbstatic 等），不和页面请求抢同一份「每源间隔」额度，
+     * 否则一个影片的十来张剧照会按页面间隔串行排队，成为整批耗时的瓶颈。
+     */
     fun downloadDetailed(
         url: String,
         referer: String? = null,
         source: String? = null,
         timeoutMs: Long? = null,
     ): Downloaded {
-        throttle(source)
+        throttleImage(source)
         try {
             val builder = HttpRequest.newBuilder(URI.create(url))
                 .timeout(timeoutFor(source, timeoutMs))
                 .header("User-Agent", props.scraper.userAgent)
             builder.header("Referer", referer ?: originOf(url))
             val resp = client(source).send(builder.GET().build(), HttpResponse.BodyHandlers.ofByteArray())
-            if (resp.statusCode() != 200) throw ScrapeException("HTTP ${resp.statusCode()} for image $url")
+            if (resp.statusCode() != 200) throw ScrapeException("HTTP ${resp.statusCode()} for image $url", code = resp.statusCode())
             return Downloaded(resp.body(), resp.headers().firstValue("content-type").orElse(null))
         } finally {
             release()
@@ -448,9 +533,20 @@ class HttpClientFactory(private val props: AppProperties) {
      * 按数据源分别计间隔——不同源可并行，同源的相邻请求起始时间相差 interval。
      */
     private fun throttle(source: String?) {
-        val key = source?.trim()?.lowercase() ?: ""
         val perSource = source?.let { props.sourceConfig(it) }?.intervalMs?.takeIf { it > 0 }
-        val interval = perSource ?: props.scraper.requestIntervalMs
+        throttleKey(source?.trim()?.lowercase() ?: "", perSource ?: props.scraper.requestIntervalMs)
+    }
+
+    /**
+     * 图片请求间隔：独立通道（key 加 #img 后缀），用 images.intervalMs，不占页面请求的额度。
+     * 图片 CDN 与页面站点是两套风控，间隔可取更小值；并发上限由 ImageStore 的全局图片池控制。
+     */
+    private fun throttleImage(source: String?) {
+        val key = (source?.trim()?.lowercase() ?: "") + "#img"
+        throttleKey(key, props.images.intervalMs)
+    }
+
+    private fun throttleKey(key: String, interval: Long) {
         if (interval <= 0) return
         val waitMs = lock.write {
             val now = System.currentTimeMillis()

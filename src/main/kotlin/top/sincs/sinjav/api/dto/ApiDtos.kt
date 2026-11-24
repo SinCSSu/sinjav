@@ -161,6 +161,8 @@ data class SettingsUpdate(
     val javdbCookie: String? = null,
     val proxyHost: String? = null,
     val proxyPort: Int? = null,
+    /** 不走代理的域名（逗号/换行分隔，支持 *.example.com 通配）：命中则直连 */
+    val noProxyHosts: String? = null,
     /** CF 过盾代理地址（如 trawl MITM http://127.0.0.1:8192）；空则全部走全局代理/直连 */
     val cfProxyUrl: String? = null,
     /** 需要 CF 过盾的数据源 id，逗号分隔（如 "javdb"） */
@@ -259,6 +261,8 @@ data class MovieDetailDto(
     val previewSource: String? = null,
     /** 封面候选列表（按优先级排序，javdb 沉底；下载失败可逐候选重试） */
     val coverCandidates: List<top.sincs.sinjav.scraper.CoverCandidate> = emptyList(),
+    /** 剧照逐张来源（与 previewUrls 同序；下载时按图路由过盾/直连） */
+    val previewCandidates: List<top.sincs.sinjav.scraper.CoverCandidate> = emptyList(),
     val plot: String?, val source: String?, val status: String, val failReason: String?,
     val actresses: List<String>, val genres: List<String>,
     val scrapedAt: String?, val createdAt: String, val updatedAt: String,
@@ -300,6 +304,8 @@ data class SettingsDto(
     val knownSources: Set<String>,
     val proxyHost: String, val proxyPort: Int, val requestIntervalMs: Long, val concurrency: Int,
     val timeoutMs: Long, val cfTimeoutMs: Long,
+    /** 不走代理的域名（逗号/换行分隔，支持通配） */
+    val noProxyHosts: String,
     val cfProxyUrl: String, val cfProxySources: String,
     val namingTemplate: String, val conflictPolicy: String,
     val generateNfo: Boolean, val downloadImages: Boolean,
@@ -327,6 +333,7 @@ data class SettingsDto(
             userAgent = props.scraper.userAgent, javdbCookie = props.scraper.javdbCookie,
             proxyHost = props.scraper.proxyHost, proxyPort = props.scraper.proxyPort,
             cfProxyUrl = props.scraper.cfProxyUrl, cfProxySources = props.scraper.cfProxySources,
+            noProxyHosts = props.scraper.noProxyHosts,
             requestIntervalMs = props.scraper.requestIntervalMs, concurrency = props.scraper.concurrency,
             timeoutMs = props.scraper.timeoutMs, cfTimeoutMs = props.scraper.cfTimeoutMs,
             namingTemplate = props.organize.namingTemplate, conflictPolicy = props.organize.conflictPolicy,

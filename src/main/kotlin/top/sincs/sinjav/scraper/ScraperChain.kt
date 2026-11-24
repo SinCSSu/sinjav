@@ -51,7 +51,10 @@ class ScraperChain(
         else results.first()
             .let { (id, meta) ->
                 val candidates = listOfNotNull(meta.coverUrl?.let { CoverCandidate(it, id) })
-                id to meta.copy(coverSource = id, previewSource = id, coverCandidates = candidates)
+                id to meta.copy(
+                    coverSource = id, previewSource = id, coverCandidates = candidates,
+                    previewCandidates = meta.previewUrls.map { CoverCandidate(it, id) },
+                )
             }
     }
 
@@ -105,6 +108,11 @@ class ScraperChain(
         val candidates = orderCoverCandidates(
             sortedResults.mapNotNull { (id, meta) -> meta.coverUrl?.let { CoverCandidate(it, id) } },
         )
+        // 剧照逐张记录来源：合并后列表里混有多个源的图（如 javbus 的 dmm 图床 + javdb 的 jdbstatic），
+        // 只保留单一 previewSource 会把图发到错误的出口通道（直连/过盾）。同 URL 取链序在前的源
+        val previewCandidates = sortedResults
+            .flatMap { (id, meta) -> meta.previewUrls.map { url -> CoverCandidate(url, id) } }
+            .distinctBy { it.url }
         return MovieMetadata(
             number = metas.first().number,
             title = pick { it.title },
@@ -117,8 +125,9 @@ class ScraperChain(
             durationMin = pick { it.durationMin },
             coverUrl = candidates.firstOrNull()?.url,
             coverSource = candidates.firstOrNull()?.source,
-            previewUrls = sortedResults.flatMap { it.second.previewUrls }.distinct(),
-            previewSource = sortedResults.firstOrNull { it.second.previewUrls.isNotEmpty() }?.first,
+            previewUrls = previewCandidates.map { it.url },
+            previewSource = previewCandidates.firstOrNull()?.source,
+            previewCandidates = previewCandidates,
             coverCandidates = candidates,
             plot = pick { it.plot },
             actresses = sortedResults.flatMap { it.second.actresses }.distinct(),

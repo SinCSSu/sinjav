@@ -44,6 +44,7 @@ class SettingsService(
             u.javdbCookie?.let { add("javdbCookie" to it) }
             u.proxyHost?.let { add("proxyHost" to it) }
             u.proxyPort?.let { add("proxyPort" to it.toString()) }
+            u.noProxyHosts?.let { add("noProxyHosts" to it) }
             u.cfProxyUrl?.let { add("cfProxyUrl" to it) }
             u.cfProxySources?.let { add("cfProxySources" to it) }
             u.requestIntervalMs?.let { add("requestIntervalMs" to it.toString()) }
@@ -95,6 +96,7 @@ class SettingsService(
             "javdbCookie" -> props.scraper.javdbCookie = value
             "proxyHost" -> props.scraper.proxyHost = value
             "proxyPort" -> props.scraper.proxyPort = value.toIntOrNull() ?: 0
+            "noProxyHosts" -> props.scraper.noProxyHosts = value
             "cfProxyUrl" -> props.scraper.cfProxyUrl = value
             "cfProxySources" -> props.scraper.cfProxySources = value
             "requestIntervalMs" -> props.scraper.requestIntervalMs = value.toLongOrNull() ?: 1500

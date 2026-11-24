@@ -139,6 +139,9 @@ class ScrapeCompareService(
                     ?.let { top.sincs.sinjav.scraper.CoverCandidate(it, c.source) }
             },
         )
+        // 剧照逐张来源：对比面板只能选一个来源，故该来源下的剧照全部同属它；
+        // 未选来源（手动粘贴 URL）时留空，下载回退整体来源 primary
+        val previewCandidates = previewSource?.let { src -> previewUrls.map { CoverCandidate(it, src) } } ?: emptyList()
         // 整体来源：标题选择的来源 > 任一非手动来源 > manual
         val primary = choice("title")?.source?.takeIf { it != null && it != "manual" }
             ?: req.fields.values.firstOrNull { !it.source.isNullOrBlank() && it.source != "manual" }?.source
@@ -157,12 +160,14 @@ class ScrapeCompareService(
             coverSource = coverCandidates.firstOrNull()?.source ?: coverSource,
             previewSource = previewSource,
             coverCandidates = coverCandidates,
+            previewCandidates = previewCandidates,
         )
         imageStore.downloadAll(
             n, coverUrl, previewUrls, primary,
             coverSource = coverCandidates.firstOrNull()?.source ?: coverSource,
             previewSource = previewSource,
             coverCandidates = coverCandidates,
+            previewCandidates = previewCandidates,
         )
         log.info(
             "多源对比落库 {}: source={} 封面来源={} 剧照来源={} 封面候选={}个",

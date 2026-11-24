@@ -34,6 +34,12 @@ data class ScraperProps(
     var javdbCookie: String = "",
     var proxyHost: String = "",
     var proxyPort: Int = 0,
+    /**
+     * 不走代理的域名（逗号/换行分隔）：命中的请求直连，不经过全局代理与过盾代理。
+     * 支持通配：`*.example.com`（仅子域）、`example.com`（本域 + 全部子域）。
+     * 典型用途：内网 Emby/图床、本机服务、被代理节点绕远反而更慢的图床。
+     */
+    var noProxyHosts: String = "",
     var requestIntervalMs: Long = 1500,
     var concurrency: Int = 1,
     // 普通请求超时；过盾（cfProxy）请求单独用 cfTimeoutMs（过盾需等待 CF 挑战，更长）
@@ -108,11 +114,20 @@ data class AsyncProps(
     var jobPoolQueueCapacity: Int = 100,
 )
 
+/**
+ * 图片下载管线配置：
+ * - concurrency：全局图片并发上限（封面/剧照共用，跨影片共享），0/负数按 1 处理
+ * - intervalMs：图片请求独立间隔，与页面请求的 requestIntervalMs 分开计
+ *   图片走的是独立 CDN（dmm/jdbstatic 等），不受页面风控约束，间隔可远小于页面
+ *   （<=0 表示不限速，仅靠 concurrency 控速）
+ */
 data class ImageProps(
     var download: Boolean = true,
     var dir: String = "./data/images",
     /** 图片缓存过期天数：过期文件定时清理（每日 04:00）；0 = 永久保留 */
     var ttlDays: Int = 3,
+    var concurrency: Int = 6,
+    var intervalMs: Long = 200,
 )
 
 /**
@@ -176,6 +191,16 @@ data class AppProperties(
     /** 需要 CF 过盾的数据源 id 集合 */
     fun cfProxySourceSet(): Set<String> =
         scraper.cfProxySources.split(',').map { it.trim().lowercase() }.filter { it.isNotBlank() }.toSet()
+
+    /**
+     * 不走代理的域名模式（小写、去协议前缀与末尾点）。
+     * 支持 `*.a.com`（仅子域）与 `a.com`（本域 + 子域）两种写法。
+     */
+    fun noProxyPatternSet(): List<String> =
+        scraper.noProxyHosts.split(',', '\n', ';')
+            .map { it.trim().lowercase().removePrefix("http://").removePrefix("https://").trimEnd('.') }
+            .filter { it.isNotBlank() }
+            .distinct()
 
     /** 数据源独立配置（未配置或全空覆盖项时返回 null） */
     fun sourceConfig(sourceId: String): SourceConfig? =

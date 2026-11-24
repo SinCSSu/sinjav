@@ -38,6 +38,15 @@
           <el-form-item label="代理端口">
             <el-input-number v-model="form.proxyPort" :min="0" :max="65535" />
           </el-form-item>
+          <el-form-item label="不走代理的域名">
+            <el-input
+              v-model="form.noProxyHosts"
+              type="textarea"
+              :rows="2"
+              placeholder="逗号或换行分隔，如 dmm.co.jp, *.local；命中则直连（绕过上面与过盾代理）"
+              style="max-width: 500px"
+            />
+          </el-form-item>
           <el-divider content-position="left">CF 过盾（trawl MITM 代理）</el-divider>
           <el-form-item label="过盾代理地址">
             <el-input

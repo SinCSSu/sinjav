@@ -182,3 +182,31 @@ ImageStoreTest 用临时文件 SQLite——内存库跨连接不可见），`npm
   **`gradlew test` 166 例全绿**（2 例 live 测试需环境变量）；覆盖率 `gradlew jacocoTestReport`
   → 总体行 63.8%，`actor` 包行 93.6%。
 - **清理**：`GlobalExceptionHandler` 补齐 400/405 映射；应用默认日志级别降为 INFO（DEBUG 仅排障用）。
+
+## 10. 2026-11-24 增量：搜索列表分支与剧照路由两处修复
+
+NAS 部署环境下 307 个番号批量刮削全部失败，定位到两个**代码**缺陷（网络的过盾/直连问题另属运维层）：
+
+- **Jsoup 缺 baseUri → `URI with undefined scheme`**：`JavlibScraper` 只在「唯一命中直接跳详情」时正常，
+  一旦返回搜索结果列表就抛 `IllegalArgumentException: URI with undefined scheme`——`Jsoup.parse(html)` 未传
+  baseUri，`searchHit` 的 `abs:href` 解析为空串，`http.get("")` 被 `HttpRequest.newBuilder` 拒绝。
+  修复：`Jsoup.parse(html, "$base/")` + href 空值兜底成「未找到」。**同类缺陷一并修**：`AvsoxScraper`
+  （abs:href）、`PrestigeScraper`（abs:src，此前封面/剧照静默为空）、`ArzonScraper`/`ArzonIvScraper`（abs:href）。
+  凡「parse 后取 abs: 属性」的位置都必须带 baseUri。
+- **剧照路由被单一 `previewSource` 带错出口**：多源合并时 `previewUrls` 是各源剧照的并集，但只有一个
+  `previewSource`（取链序第一个有剧照的源）。实测 javbus+javdb 都命中时 `previewSource=javbus`，故
+  javdb 的 `c0.jdbstatic.com` 剧照被当成 javbus 源走**直连**（应为过盾），13 张全 EOF；javbus 的
+  `pics.dmm.co.jp` 剧照同理全超时。修复：新增 `MovieMetadata.previewCandidates: List<CoverCandidate>`
+  （url + source，与 `previewUrls` 同序），`ScraperChain.merge` 逐张记录来源（`distinctBy(url)`，同 URL 取链序在前的源）
+  并据它反推 `previewUrls`/`previewSource`；`ImageStore.downloadAll` 新增同名参数，逐张
+  `previewCandidates[url] ?: previewSource ?: source` 决定出口。
+- **迁移 V8 `preview_candidates TEXT`**（sqlite + postgresql）：逐张来源随 `preview_urls` 一起落库，
+  `MovieRepository` 的 `MOVIE_MAPPER` 读回、`markScraped` 写入（`serializeCandidates`，与 `cover_candidates` 同一套
+  JSON 读写，`parseCoverCandidates` 更名 `parseCandidates` 两列共用）；`POST /movies/{n}/images/retry`、
+  多源对比落库、`MovieDetailDto` 均已接入。**旧记录该列为 NULL → 逐张候选为空，回退旧的 `preview_source` 单值行为**，
+  重新刮削后才有逐张来源。
+- **测试**：`JavlibScraperTest`（本地 HttpServer 模拟搜索结果页 + 相对链接，修复前必红）、
+  `ScraperChainTest` 两条（合并逐张来源 / 单源来源）、`ImageStoreTest` 一条（把过盾代理指向死端口，验证逐张来源
+  能覆盖整体来源）、`MovieRepositoryTest` 两条（preview_candidates 落库读回 / 缺省为空）。
+  手写 movies 表的测试（`ImageStoreTest`、`ScrapeServiceAutoPhotoTest`）已同步补 `preview_candidates` 列，
+  新增表列时必须一起改。`gradlew test` 203 例全绿。

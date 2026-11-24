@@ -1888,6 +1888,9 @@ components:
           type: string
         proxyPort:
           type: integer
+        noProxyHosts:
+          type: string
+          description: 不走代理的域名（逗号/换行分隔，支持 *.example.com 通配）；命中则直连
         requestIntervalMs:
           type: integer
           description: 刮削请求最小间隔（毫秒），限速防风控
@@ -2249,6 +2252,9 @@ components:
           type: string
         proxyPort:
           type: integer
+        noProxyHosts:
+          type: string
+          description: 不走代理的域名（逗号/换行分隔，支持 *.example.com 通配）；命中则直连
         requestIntervalMs:
           type: integer
         concurrency:

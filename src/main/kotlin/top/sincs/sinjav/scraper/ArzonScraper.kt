@@ -99,7 +99,8 @@ class ArzonScraper(http: HttpClientFactory, props: AppProperties) : ArzonScraper
     override fun scrape(number: String): MovieMetadata {
         val cookie = ageCookie()
         val searchHtml = get("$base/itemlist.html?t=&m=all&s=&q=${ScraperParsers.urlEncode(number)}", cookie)
-        val searchDoc = org.jsoup.Jsoup.parse(searchHtml)
+        // 带 baseUri：结果链接用 abs:href 解析（相对路径）
+        val searchDoc = org.jsoup.Jsoup.parse(searchHtml, "$base/")
         val itemUrl = ScraperParsers.blankToNull(searchDoc.select("h2 a").firstOrNull()?.attr("abs:href"))
             ?: throw ScrapeException("Arzon 未找到番号 $number 的搜索结果")
 
@@ -135,7 +136,8 @@ class ArzonIvScraper(http: HttpClientFactory, props: AppProperties) : ArzonScrap
     override fun scrape(number: String): MovieMetadata {
         val cookie = ageCookie()
         val searchHtml = get("$base/imagelist.html?q=${ScraperParsers.urlEncode(number)}", cookie)
-        val searchDoc = org.jsoup.Jsoup.parse(searchHtml)
+        // 带 baseUri：结果链接用 abs:href 解析（相对路径）
+        val searchDoc = org.jsoup.Jsoup.parse(searchHtml, "$base/")
         val itemUrl = ScraperParsers.blankToNull(searchDoc.select("h2 a").firstOrNull()?.attr("abs:href"))
             ?: throw ScrapeException("ArzonIV 未找到番号 $number 的搜索结果")
 

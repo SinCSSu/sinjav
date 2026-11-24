@@ -37,7 +37,8 @@ class ImageStoreTest {
                 id INTEGER PRIMARY KEY AUTOINCREMENT, number TEXT UNIQUE NOT NULL, raw_number TEXT, title TEXT,
                 title_zh TEXT, title_orig TEXT, release_date TEXT, director TEXT, maker TEXT, label TEXT,
                 series TEXT, duration_min INTEGER, cover_url TEXT, preview_urls TEXT,
-                cover_source TEXT, preview_source TEXT, cover_candidates TEXT, plot TEXT, source TEXT,
+                cover_source TEXT, preview_source TEXT, cover_candidates TEXT, preview_candidates TEXT,
+                plot TEXT, source TEXT,
                 status TEXT, fail_reason TEXT, scraped_at TEXT,
                 created_at TEXT DEFAULT CURRENT_TIMESTAMP, updated_at TEXT DEFAULT CURRENT_TIMESTAMP
             )
@@ -150,6 +151,36 @@ class ImageStoreTest {
             Files.list(dir).use { it.count() } == 0L,
             "失败的文件不应写入",
         )
+    }
+
+    @Test
+    fun `剧照按逐张来源路由（不被单一 previewSource 带错出口）`() {
+        val server = startServer(mapOf("/1.jpg" to makeJpeg()))
+        try {
+            val props = newProps("sinjav-imgs-preview-route").apply {
+                // javdb 被配置成过盾源，过盾代理指向无人监听的端口 → 走该通道必失败
+                scraper.cfProxyUrl = "http://127.0.0.1:1"
+                scraper.cfProxySources = "javdb"
+                scraper.cfTimeoutMs = 300
+            }
+            val (store, _) = newStore(props)
+            val url = "http://127.0.0.1:${server.address.port}/1.jpg"
+            val dir = java.nio.file.Path.of(props.images.dir).resolve("ABP-123")
+
+            // 只给整体来源：按 javdb（过盾）路由 → 失败，不落盘
+            store.downloadAll("ABP-123", coverUrl = null, previewUrls = listOf(url), previewSource = "javdb")
+            assertFalse(Files.exists(dir.resolve("preview1.jpg")), "单一 previewSource=javdb 时应下载失败")
+
+            // 逐张来源为 javbus（直连）→ 应成功落盘
+            store.downloadAll(
+                "ABP-123", coverUrl = null, previewUrls = listOf(url),
+                previewSource = "javdb", previewCandidates = listOf(CoverCandidate(url, "javbus")),
+            )
+            assertTrue(Files.exists(dir.resolve("preview1.jpg")), "逐张来源应覆盖整体来源并下载成功")
+            assertEquals(makeJpeg().toList(), Files.readAllBytes(dir.resolve("preview1.jpg")).toList())
+        } finally {
+            server.stop(0)
+        }
     }
 
     private fun startServer(responses: Map<String, ByteArray>): com.sun.net.httpserver.HttpServer {

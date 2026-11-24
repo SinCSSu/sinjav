@@ -22,7 +22,8 @@ class AvsoxScraper(
         val normalized = number.uppercase().replace("FC2-PPV-", "FC2-")
         val searchId = normalized.replace("FC2-", "FC2-PPV-")
 
-        val searchDoc = Jsoup.parse(http.get("${base}tw/search/${ScraperParsers.urlEncode(searchId)}", source = id()))
+        // 必须带 baseUri：结果条目里的 href 是相对路径，下一行用 abs:href 解析
+        val searchDoc = Jsoup.parse(http.get("${base}tw/search/${ScraperParsers.urlEncode(searchId)}", source = id()), base)
         val boxes = searchDoc.select("a.movie-box")
         val hit = boxes.firstOrNull { box ->
             val id = box.select("div.photo-info span date").firstOrNull()?.text()?.trim()
@@ -30,7 +31,8 @@ class AvsoxScraper(
         } ?: throw ScrapeException("avsox 未找到番号 $number")
 
         // 详情统一走 cn 语言路径
-        val detailUrl = hit.attr("abs:href").replace("/tw/", "/cn/")
+        val detailUrl = hit.attr("abs:href").replace("/tw/", "/cn/").takeIf { it.isNotBlank() }
+            ?: throw ScrapeException("avsox 未找到番号 $number")
         val doc = Jsoup.parse(http.get(detailUrl, source = id()), detailUrl)
         return parseDetail(doc, number).also { logResult(number, it) }
     }

@@ -55,3 +55,5 @@ out/
 /sinjav_web/.wl-snapshot/
 # 前端构建校验产物（vite build --outDir .build-check），不入库
 /sinjav_web/.build-check/
+# playwright-cli 调试产物（截图/快照/控制台日志），不入库
+/sinjav_web/.playwright-cli/

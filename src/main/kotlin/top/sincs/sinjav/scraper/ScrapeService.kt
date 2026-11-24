@@ -97,12 +97,13 @@ class ScrapeService(
                             actresses = meta.actresses, genres = genres,
                             coverSource = meta.coverSource, previewSource = meta.previewSource,
                             coverCandidates = meta.coverCandidates,
+                            previewCandidates = meta.previewCandidates,
                         )
                         if (createdActresses.isNotEmpty()) newActressIds.addAll(createdActresses)
                         imageStore.downloadAll(
                             number, meta.coverUrl, meta.previewUrls,
                             source = source, coverSource = meta.coverSource, previewSource = meta.previewSource,
-                            coverCandidates = meta.coverCandidates,
+                            coverCandidates = meta.coverCandidates, previewCandidates = meta.previewCandidates,
                         )
                         log.info("刮削成功 {} 来源={} 标题={}", number, source, titleZh ?: meta.title ?: "—")
                     } catch (e: Exception) {

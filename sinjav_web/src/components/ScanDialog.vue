@@ -32,9 +32,12 @@
                 filterable
                 allow-create
                 default-first-option
+                collapse-tags
+                collapse-tags-tooltip
+                :max-collapse-tags="2"
                 size="small"
                 placeholder="如 mp4 / mkv"
-                class="w-full"
+                class="w-full ext-select"
               />
             </div>
             <div class="field">
@@ -390,6 +393,16 @@ function isPlayable(path: string): boolean {
 }
 .w-full {
   width: 100%;
+}
+/* 后缀名多选：左栏只有 300px，标签一多会换行把内容顶出输入框边框。
+   折叠标签（collapse-tags）已限制为单行，这里再限制单个标签宽度并省略超长文本 */
+.ext-select :deep(.el-tag) {
+  max-width: 96px;
+}
+.ext-select :deep(.el-tag .el-tag__content) {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .mid-title {
   display: flex;

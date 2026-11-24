@@ -22,10 +22,13 @@ class JavlibScraper(
         val html = runCatching {
             http.get("$base/cn/vl_searchbyid.php?keyword=${ScraperParsers.urlEncode(number)}", source = id())
         }.getOrElse { throw ScrapeException("javlib 请求失败：$number（${it.message}）") }
-        val doc = Jsoup.parse(html)
+        // 必须带 baseUri：搜索结果页里的 href 是相对路径，searchHit 用 abs:href 解析；
+        // 缺 baseUri 时 abs:href 为空 → 第二次请求抛「URI with undefined scheme」
+        val doc = Jsoup.parse(html, "$base/")
 
         // 详情页特征：存在 #video_info；否则是搜索结果页
-        val detailDoc = if (doc.selectFirst("#video_info") != null) doc else searchHit(doc, number)?.let {
+        val detailDoc = if (doc.selectFirst("#video_info") != null) doc
+        else searchHit(doc, number)?.takeIf { it.isNotBlank() }?.let {
             Jsoup.parse(http.get(it, source = id()), it)
         } ?: throw ScrapeException("javlib 未找到番号 $number")
 

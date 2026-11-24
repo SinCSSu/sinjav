@@ -22,7 +22,8 @@ class PrestigeScraper(
             // Cookie 由 HttpClientFactory 统一解析：数据源独立配置 > 内置 __age_auth__=true 年龄验证
             http.get("$base/goods/goods_detail.php?sku=${ScraperParsers.urlEncode(number)}", source = id())
         }.getOrElse { throw ScrapeException("prestige 未找到番号 $number（HTTP 500 表示无此影片）") }
-        val doc = Jsoup.parse(html)
+        // 带 baseUri：封面/剧照用 abs:src 解析，缺 baseUri 会得到空串（封面剧照静默丢失）
+        val doc = Jsoup.parse(html, "$base/")
         val container = doc.selectFirst("section.px-4.mb-4")
             ?: throw ScrapeException("prestige 未找到番号 $number")
 

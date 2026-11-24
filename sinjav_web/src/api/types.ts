@@ -334,6 +334,8 @@ export type SettingsUpdate = {
   javdbCookie?: string
   proxyHost?: string
   proxyPort?: number
+  /** 不走代理的域名（逗号/换行分隔，支持 *.example.com 通配）；命中则直连 */
+  noProxyHosts?: string
   /** CF 过盾代理地址（如 trawl MITM http://127.0.0.1:8192）；空则全部走全局代理/直连 */
   cfProxyUrl?: string
   /** 需要 CF 过盾的数据源 id，逗号分隔（如 "javdb"） */

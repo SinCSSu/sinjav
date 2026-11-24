@@ -39,6 +39,8 @@ data class Movie(
     val previewSource: String? = null,
     /** 封面候选列表（JSON 数组 [{"url","source"}]，下载失败自动换下一候选；javdb 沉底） */
     val coverCandidates: List<top.sincs.sinjav.scraper.CoverCandidate> = emptyList(),
+    /** 剧照逐张来源（JSON 数组 [{"url","source"}]）：下载时按图路由；缺项回退 preview_source */
+    val previewCandidates: List<top.sincs.sinjav.scraper.CoverCandidate> = emptyList(),
     val plot: String?,
     val source: String?,
     val status: String, // pending | scraped | failed

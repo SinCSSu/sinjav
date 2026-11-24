@@ -71,6 +71,39 @@ class ScraperChainTest {
     }
 
     @Test
+    fun `合并时每张剧照记录各自来源（逐张路由）`() {
+        // 多源各有剧照：javbus 的剧照来自 dmm 图床、javdb 的来自 jdbstatic，
+        // 只留单一 previewSource 会把 javdb 的图错发到 javbus 的直连通道
+        val scrapers = listOf(
+            FakeScraper("javbus", MovieMetadata(number = "ABP-123", previewUrls = listOf("https://pics.dmm.co.jp/hmn00607jp-1.jpg"))),
+            FakeScraper("javdb", MovieMetadata(number = "ABP-123", previewUrls = listOf("https://c0.jdbstatic.com/nKKYEM_l_0.jpg"))),
+        )
+        val chain2 = ScraperChain(scrapers, props)
+        val merged = chain2.mergeSources(chain2.scrapeAllSources("ABP-123"))
+
+        assertEquals("javbus", merged.previewSource, "整体来源仍取链序第一个有剧照的源")
+        assertEquals(
+            listOf("javbus", "javdb"),
+            merged.previewCandidates.map { it.source },
+            "每张剧照应记录产生它的数据源",
+        )
+        assertEquals(merged.previewUrls, merged.previewCandidates.map { it.url }, "候选顺序应与 previewUrls 一致")
+    }
+
+    @Test
+    fun `单源刮削时剧照来源即该源`() {
+        val scrapers = listOf(
+            FakeScraper("javdb", MovieMetadata(number = "ABP-123", previewUrls = listOf("https://c0.jdbstatic.com/a.jpg"))),
+        )
+        val (source, meta) = ScraperChain(scrapers, props).scrapeWithSource("ABP-123")
+        assertEquals("javdb", source)
+        assertEquals(
+            listOf(CoverCandidate("https://c0.jdbstatic.com/a.jpg", "javdb")),
+            meta.previewCandidates,
+        )
+    }
+
+    @Test
     fun `候选排序：用户所选封面置顶并去重`() {
         val pool = listOf(
             CoverCandidate("https://javbus/c.jpg", "javbus"),

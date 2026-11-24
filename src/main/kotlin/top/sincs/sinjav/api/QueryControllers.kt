@@ -63,6 +63,7 @@ class MovieController(
                 label = m.label, series = m.series, durationMin = m.durationMin, coverUrl = m.coverUrl,
                 previewUrls = m.previewUrls,
                 coverSource = m.coverSource, previewSource = m.previewSource, coverCandidates = m.coverCandidates,
+                previewCandidates = m.previewCandidates,
                 plot = m.plot, source = m.source, status = m.status,
                 failReason = m.failReason, actresses = movies.findActresses(m.id),
                 genres = movies.findGenres(m.id),
@@ -85,7 +86,7 @@ class MovieController(
         imageStore.downloadAll(
             m.number, m.coverUrl, m.previewUrls,
             source = m.source, coverSource = m.coverSource, previewSource = m.previewSource,
-            coverCandidates = m.coverCandidates,
+            coverCandidates = m.coverCandidates, previewCandidates = m.previewCandidates,
         )
         val coverSource = movies.findByNumber(m.number)?.coverSource
         return ResponseEntity.ok(

@@ -187,6 +187,14 @@ body::after {
     0 0 0 3px rgba(91, 110, 225, 0.1) !important;
 }
 
+/* 数字输入框（并发数/请求间隔等）的加减按钮是绝对定位浮在输入框两端（z-index:1），
+   上面的 3px 外扩焦点环会伸进按钮区域、又被半透明按钮压在下面。
+   这里只保留向内收的 1px 环：按钮从 top/bottom 1px 起覆盖，纵向两端把环盖住，
+   视觉上焦点框只包住中间输入区，不再框住加减按钮 */
+.el-input-number .el-input__wrapper.is-focus {
+  box-shadow: 0 0 0 1px rgba(91, 110, 225, 0.55) inset !important;
+}
+
 /* ---------- 表格 / 标签 / 分页 ---------- */
 .el-table {
   --el-table-bg-color: transparent;

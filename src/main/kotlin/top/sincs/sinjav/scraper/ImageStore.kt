@@ -6,6 +6,10 @@ import org.springframework.stereotype.Component
 import top.sincs.sinjav.config.AppProperties
 import java.nio.file.Files
 import java.nio.file.Path
+import java.util.concurrent.ExecutorService
+import java.util.concurrent.Executors
+import java.util.concurrent.Future
+import java.util.concurrent.atomic.AtomicInteger
 
 /**
  * 刮削成功后下载封面/剧照到本地目录（data/images/{番号}/poster.jpg、fanart.jpg、previewN.jpg）。
@@ -35,6 +39,9 @@ class ImageStore(
      * 下载封面/剧照。source 为整体来源（单源时）；coverSource/previewSource 为多源合并时
      * 各图片字段的实际来源数据源（为空回退 source）；coverCandidates 为封面候选列表
      * （为空时回退单候选 coverUrl）。下载路由按设置的过盾数据源生效。
+     *
+     * previewCandidates 为剧照逐张的来源（url + source）：多源合并后同一列表里混有多个源的图，
+     * 逐张路由才不会被单一 previewSource 带错出口；缺项回退 previewSource / source。
      */
     fun downloadAll(
         number: String,
@@ -44,26 +51,82 @@ class ImageStore(
         coverSource: String? = null,
         previewSource: String? = null,
         coverCandidates: List<CoverCandidate> = emptyList(),
+        previewCandidates: List<CoverCandidate> = emptyList(),
     ) {
         if (!props.images.download) return
         val dir = Path.of(props.images.dir).resolve(number)
         runCatching { Files.createDirectories(dir) }
             .onFailure { log.warn("创建图片目录失败 {}: {}", dir, it.message); return }
 
+        // 封面与剧照一起提交到全局图片池并行下载：单张走代理约 1~2s，一个影片十余张图串行就是 20s+，
+        // 整批三百多部会被图片拖成小时级。并发上限在池上（跨影片共享），不会因为刮削并发调高而失控。
+        val pool = imagePool()
+        val tasks = mutableListOf<Future<*>>()
         // 封面：候选列表逐个尝试（JavSP download_cover 语义），成功 → fanart 原图 + poster 裁剪
-        downloadCoverOriginal(number, coverUrl, coverSource ?: source, coverCandidates)?.let { original ->
-            runCatching {
-                Files.write(dir.resolve("fanart.jpg"), original)
-                // 横版全封套扫描裁取右侧前封面 → 竖版 poster（FC2 单图封面不裁，见 CoverCropper）
-                Files.write(dir.resolve("poster.jpg"), coverCropper.cropFrontCover(number, original))
-            }.onFailure { log.warn("封面写入本地失败 番号={}: {}", number, it.message) }
-        }
+        tasks += pool.submit { writeCover(number, dir, coverUrl, coverSource ?: source, coverCandidates) }
+        // 剧照逐张路由表：合并结果里各源剧照共用一份列表，按产生它的数据源取出口（过盾/直连）
+        val previewSourceByUrl = previewCandidates.associate { it.url to it.source }
         previewUrls.forEachIndexed { i, url ->
-            runCatching { Files.write(dir.resolve("preview${i + 1}.jpg"), http.download(url, source = previewSource ?: source)) }
-                .onFailure { log.warn("下载剧照到本地失败 {}: {}", url, it.message) }
+            val route = previewSourceByUrl[url] ?: previewSource ?: source
+            tasks += pool.submit { writePreview(dir, i, url, route) }
         }
+        // 本影片的图写完才返回：调用方随后会整理/推送媒体库，文件必须已就位
+        tasks.forEach { runCatching { it.get() } }
         log.info("图片已缓存 番号={} 目录={} 封面={} 剧照={}张", number, dir, coverUrl != null, previewUrls.size)
     }
+
+    /** 封面落盘（fanart 原图 + 裁剪后的竖版 poster）；失败只记警告，不影响刮削结果 */
+    private fun writeCover(
+        number: String,
+        dir: Path,
+        coverUrl: String?,
+        source: String?,
+        candidates: List<CoverCandidate>,
+    ) {
+        val original = downloadCoverOriginal(number, coverUrl, source, candidates) ?: return
+        runCatching {
+            Files.write(dir.resolve("fanart.jpg"), original)
+            // 横版全封套扫描裁取右侧前封面 → 竖版 poster（FC2 单图封面不裁，见 CoverCropper）
+            Files.write(dir.resolve("poster.jpg"), coverCropper.cropFrontCover(number, original))
+        }.onFailure { log.warn("封面写入本地失败 番号={}: {}", number, it.message) }
+    }
+
+    /** 单张剧照落盘；失败只记警告 */
+    private fun writePreview(dir: Path, index: Int, url: String, route: String?) {
+        runCatching { Files.write(dir.resolve("preview${index + 1}.jpg"), http.download(url, source = route)) }
+            .onFailure { log.warn("下载剧照到本地失败 {}: {}", url, it.message) }
+    }
+
+    private val imagePoolLock = Any()
+
+    @Volatile
+    private var imagePool: ExecutorService? = null
+
+    @Volatile
+    private var imagePoolSize = 0
+
+    /**
+     * 全局图片下载池：并发上限 = images.concurrency（1~32），跨影片共享。
+     * 共享是刻意的：刮削并发调到 8 时，若不共享就会有 8 × 剧照数 的并发打到代理上，
+     * 既容易触发限流也会把节点打满。设置页改了并发数后自动重建（旧池让在途任务自然结束）。
+     */
+    private fun imagePool(): ExecutorService {
+        val size = props.images.concurrency.coerceIn(1, 32)
+        imagePool?.let { if (imagePoolSize == size && !it.isShutdown) return it }
+        synchronized(imagePoolLock) {
+            imagePool?.let { if (imagePoolSize == size && !it.isShutdown) return it }
+            imagePool?.shutdown()
+            val created = Executors.newFixedThreadPool(size) { r ->
+                Thread(r, "img-dl-${threadSeq.incrementAndGet()}").apply { isDaemon = true }
+            }
+            imagePool = created
+            imagePoolSize = size
+            log.info("图片下载池已就绪 并发={}", size)
+            return created
+        }
+    }
+
+    private val threadSeq = AtomicInteger(0)
 
     /**
      * 获取封面原图字节（候选列表逐个尝试，JavSP download_cover 同款语义）：

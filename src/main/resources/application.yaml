@@ -36,11 +36,15 @@ sinjav:
     javdb-cookie: ""          # JavDB 登录 Cookie（部分信息需登录可见）
     proxy-host: ""            # 可选 HTTP 代理
     proxy-port: 0
-    request-interval-ms: 1500 # 相邻请求最小间隔（限速）
-    concurrency: 1            # 刮削全局并发
+    # 不走代理的域名（逗号/换行分隔，支持 *.example.com 通配；a.com 同时匹配其子域）。
+    # 命中的请求绕过上面与下面两个代理直连，运行时可在设置页修改
+    no-proxy-hosts: ""
+    request-interval-ms: 1500 # 页面请求相邻最小间隔（限速；图片另有 images.interval-ms）
+    concurrency: 4            # 同时刮削的影片数（每部影片内部各数据源本就并发）
     timeout-ms: 15000
     cf-timeout-ms: 60000      # 过盾（cfProxy）请求超时：需等待 CF 挑战，通常比普通超时长
-    max-retries-per-item: 1   # 单次任务内每条番号最大重试次数
+    # 页面请求失败重试次数（仅瞬时故障：连接异常/超时/429/5xx）；图片不重试
+    max-retries-per-item: 1
     base-url-javbus: "https://www.javbus.com"
     base-url-javdb: "https://javdb.com"
     base-url-missav: "https://missav.ai"
@@ -77,6 +81,8 @@ sinjav:
   images:
     download: true             # 刮削成功后下载封面/剧照到本地
     dir: ./data/images         # 本地图片目录，Web 端通过 /local-images/{番号}/poster.jpg 访问
+    concurrency: 6             # 图片下载全局并发（跨影片共享），0/负数按 1 处理
+    interval-ms: 200           # 图片请求独立间隔（图片 CDN 与页面站点风控分离，可远小于页面间隔）
   gfriends:
     # Gfriends 头像库索引（Filetree.json）；其所在目录同时作为图片 raw 基址，索引内的相对路径按此拼接
     index-url: "https://raw.githubusercontent.com/gfriends/gfriends/master/Filetree.json"

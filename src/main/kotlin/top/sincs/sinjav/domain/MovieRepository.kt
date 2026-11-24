@@ -24,7 +24,8 @@ private val MOVIE_MAPPER = RowMapper { rs, _ ->
         previewUrls = rs.getString("preview_urls")?.let { parseJsonArray(it) } ?: emptyList(),
         coverSource = rs.getString("cover_source"),
         previewSource = rs.getString("preview_source"),
-        coverCandidates = rs.getString("cover_candidates")?.let { parseCoverCandidates(it) } ?: emptyList(),
+        coverCandidates = rs.getString("cover_candidates")?.let { parseCandidates(it) } ?: emptyList(),
+        previewCandidates = rs.getString("preview_candidates")?.let { parseCandidates(it) } ?: emptyList(),
         plot = rs.getString("plot"),
         source = rs.getString("source"),
         status = rs.getString("status"),
@@ -38,8 +39,8 @@ private val MOVIE_MAPPER = RowMapper { rs, _ ->
 private fun parseJsonArray(json: String): List<String> =
     Regex("\"([^\"]*)\"").findAll(json).map { it.groupValues[1] }.filter { it.isNotBlank() }.toList()
 
-/** cover_candidates JSON 数组（[{"url":"...","source":"..."}]）解析；解析失败返回空列表（不阻断查询） */
-private fun parseCoverCandidates(json: String): List<top.sincs.sinjav.scraper.CoverCandidate> =
+/** 图片候选 JSON 数组（[{"url":"...","source":"..."}]）解析，cover_candidates / preview_candidates 共用；解析失败返回空列表（不阻断查询） */
+private fun parseCandidates(json: String): List<top.sincs.sinjav.scraper.CoverCandidate> =
     runCatching {
         mapper.readTree(json).takeIf { it.isArray }?.mapNotNull { node ->
             node.get("url")?.asString()?.takeIf { it.isNotBlank() }
@@ -49,8 +50,8 @@ private fun parseCoverCandidates(json: String): List<top.sincs.sinjav.scraper.Co
 
 private val mapper = tools.jackson.databind.json.JsonMapper.builder().build()
 
-/** cover_candidates 序列化为 JSON 数组（与 preview_urls 一致走手写转义，避免引入完整 Jackson 树写入路径） */
-private fun serializeCoverCandidates(candidates: List<top.sincs.sinjav.scraper.CoverCandidate>): String =
+/** 图片候选序列化为 JSON 数组（与 preview_urls 一致走手写转义，避免引入完整 Jackson 树写入路径） */
+private fun serializeCandidates(candidates: List<top.sincs.sinjav.scraper.CoverCandidate>): String =
     candidates.joinToString(",", "[", "]") { c ->
         """{"url":"${c.url.replace("\"", "\\\"")}","source":""" +
             (c.source?.let { "\"${it.replace("\"", "\\\"")}\"" } ?: "null") + "}"
@@ -101,6 +102,7 @@ class MovieRepository(private val jdbc: NamedParameterJdbcTemplate) {
         source: String, actresses: List<String>, genres: List<String>,
         coverSource: String? = null, previewSource: String? = null,
         coverCandidates: List<top.sincs.sinjav.scraper.CoverCandidate> = emptyList(),
+        previewCandidates: List<top.sincs.sinjav.scraper.CoverCandidate> = emptyList(),
     ): List<Long> {
         val params = mapOf(
             "n" to number, "t" to title, "tz" to titleZh, "to" to titleOrig,
@@ -109,14 +111,15 @@ class MovieRepository(private val jdbc: NamedParameterJdbcTemplate) {
             "pv" to previewUrls.joinToString(",", "[", "]") { "\"${it.replace("\"", "\\\"")}\"" },
             "pl" to plot, "src" to source,
             "cs" to coverSource, "ps" to previewSource,
-            "cc" to serializeCoverCandidates(coverCandidates.filter { it.url.isNotBlank() }),
+            "cc" to serializeCandidates(coverCandidates.filter { it.url.isNotBlank() }),
+            "pc" to serializeCandidates(previewCandidates.filter { it.url.isNotBlank() }),
         )
         jdbc.update(
             """
             UPDATE movies SET
                 title = :t, title_zh = :tz, title_orig = :to, release_date = :rd, director = :d, maker = :mk,
                 label = :lb, series = :se, duration_min = :du, cover_url = :cv, preview_urls = :pv,
-                cover_source = :cs, preview_source = :ps, cover_candidates = :cc,
+                cover_source = :cs, preview_source = :ps, cover_candidates = :cc, preview_candidates = :pc,
                 plot = :pl, source = :src, status = 'scraped', fail_reason = NULL,
                 scraped_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
             WHERE number = :n

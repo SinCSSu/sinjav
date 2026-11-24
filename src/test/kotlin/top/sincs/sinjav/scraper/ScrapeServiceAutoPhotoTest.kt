@@ -86,6 +86,7 @@ class ScrapeServiceAutoPhotoTest {
                 cover_source    VARCHAR(32),
                 preview_source  VARCHAR(32),
                 cover_candidates TEXT,
+                preview_candidates TEXT,
                 plot            TEXT,
                 source          VARCHAR(16),
                 status          VARCHAR(16) NOT NULL DEFAULT 'pending',
