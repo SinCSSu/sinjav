@@ -372,6 +372,15 @@ body::after {
   filter: brightness(1.05);
 }
 
+/* Element Plus 会把 input-group 附加区（append/prepend）内的按钮强制成
+   `color: inherit` + 透明底（.el-input-group__append button.el-button:hover 等），
+   主按钮的白字因此被冲成附加区的灰色文字。这里显式恢复白字；
+   渐变背景由上面的 .el-button--primary 规则提供，不受影响 */
+.el-input-group__append button.el-button--primary:not(.is-disabled):not(.is-plain):not(.is-text),
+.el-input-group__prepend button.el-button--primary:not(.is-disabled):not(.is-plain):not(.is-text) {
+  color: var(--el-color-white, #fff);
+}
+
 /* 全站小字提示基线（组件内 scoped 同名类可继续覆盖） */
 .hint {
   font-size: 12px;
