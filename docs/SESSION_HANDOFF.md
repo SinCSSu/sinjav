@@ -34,7 +34,9 @@ JAV 影片自动整理 + 元数据刮削器后端（参考 Solr159/JavBoss 的�
   - Flyway 迁移按方言分目录：`db/migration/sqlite/V1__init_schema.sql` 与 `db/migration/postgresql/V1__init_schema.sql`，application.yaml 用 `classpath:db/migration/{vendor}`
 - `SettingsService` 启动即查库 → 需要 `@DependsOnDatabaseInitialization`（否则 Flyway 之前跑，报 no such table）
 - `@Async` 自调用失效 → 异步执行体拆到独立 `JobRunner`（`open fun` + `@Async("jobExecutor")`）
-- 整理命名模板语义：渲染结果的**除最后一段外是子目录，最后一段是目标文件基名**（扩展名沿用源文件）。默认模板 `{number}/{number}`——转移后的文件名即番号（2026-11-20 需求，原为 `{number}/{number} - {title}`；用户已保存过设置的话需自行更新设置页模板）
+- 整理命名模板语义：渲染结果的**除最后一段外是子目录，最后一段是目标文件基名**（扩展名沿用源文件）。默认模板 `{number}/{number}-{part}`——转移后的文件名即番号（2026-11-20 需求，原为 `{number}/{number} - {title}`；用户已保存过设置的话需自行更新设置页模板）
+- **上下集适配 `{part}`（2026-11-24 需求）**：番号识别把 `SSIS-001-A` / `SSIS-001-B` / `SSIS-001-cd1` / `SSIS-001-1` / `SSIS-001 上集` 都归一为 `SSIS-001`（共用一份元数据，`movies.number` 唯一 + `ensurePending` 幂等），`PartSuffix.extract(fileName, number)` 再把被丢掉的分片标识还原成 `cdN`（A→cd1、B→cd2、数字直接取、上下→1/2），由 `NamingTemplate` 的 `{part}` 渲染为 `-cd1` / `-cd2`。`{part}` 匹配时连同前导分隔符（`[-_\s]*`）一起替换，故无分片时 `{title}-{part}` 等价于 `{title}`，不产生尾部 `-`。语义选择经用户确认：**同目录同基名 + `-cdN`**，Emby/Kodi 识别为同一影片的多个分片（而非两个独立条目）。分片定位只锚定番号的**末尾数字段**并加数字边界，故 `1080p` / `4K` / `CH`（中文字幕）/ `UC`（无码）/ `hhd800.com` 都不会误判
+- **多版本适配 `{version}` + 预览互撞检测（2026-11-24 需求）**：同番号多分辨率（`SSIS-001-1080p` / `-4K` / `-无码` / `-中字`）此前会算出同一目标路径，按冲突策略静默丢文件。现由 `VersionSuffix.extract(fileName, number)` 提取标记（分辨率 `1080p/720p/2160p/2K/4K/8K/FHD/UHD`、来源 `无码/破解/中字`，多标记按「分辨率→无码→破解→中字」用 `-` 拼接），`NamingTemplate` 的 `{version}` 渲染为 **` - 1080p`**（带空格短横线空格，满足 Emby 多版本分隔语法；`{part}` 是 `-cd1` 紧贴写法，两者不可混用）。识别前先把番号片段抹掉，避免 `HD-123` 这类番号字母被当分辨率。另：`Organizer.preview` 新增**批次内目标路径互撞检测**，重复项直接写 `error`（「目标路径与本次其他文件重复」），前端预览栏据此显示红色 alert 并不再提交该条的预览路径——避免用户无感知地丢文件。默认模板相应改为 `{number}/{number}-{part}{version}`
 - **整理任务完成后自动触发 Emby 全库刷新**（JobRunner.runOrganize/runPipeline 末尾，EmbyClient.refreshLibrary → POST /Library/Refresh）：Emby 未配置（baseUrl/apiKey 空）时跳过；刷新失败只 appendError 记录，不影响整理任务结果
 - **Emby 番号快照与「已存在」体系（2026-11-21 需求）**：POST /emby/sync（EmbySyncService，同步执行）遍历全部电影媒体库（每页 500，识别链 文件路径→原标题→标题），全量替换 emby_items 快照表（V4 迁移，两方言）；MovieSummaryDto/MovieDetailDto 增 `embyExists`（批量查 emby_items），影片库卡片显示「Emby已有」标签（MoviesView 工具栏有「同步 Emby」按钮）；整理弹窗新增第四组「已存在」= 番号在 emby_items 且 organize_status='pending'（listForOrganize group=exists，pending 组 NOT EXISTS 保证互斥）；OrganizeRequest/OrganizePreviewRequest/OrganizeParams 增 `videoOnly`（只整理视频：跳过 nfo/图片，优先级高于全局 generateNfo/downloadImages），适配 Emby 已有多分辨率媒体的场景
 - **CF 过盾专用信任管理器**（HttpClientFactory.MitmTrustManager）：MITM 签发的证书按「CA 验签 + 有效期」信任，不走 JDK PKIX 字节级 DN 链匹配——部分 MITM 代理（trawl）签子证书时 issuer DN 的 ASN.1 编码与 CA subject 不一致，JDK 会误判「Path does not chain」而 openssl 规范化比较通过；代理直通的真实站点证书回退 JDK 标准 PKIX。TLS 握手实际收到的证书链由 LoggingTrustManager 打进日志（诊断用）
@@ -85,7 +87,9 @@ src/main/kotlin/top/sincs/sinjav/
 │   ├── MovieRepository.kt / FileRecordRepository.kt / JobRepository.kt
 ├── organize/
 │   ├── LinkStrategy.kt           # HardLink/SymLink/Move/Copy（跨分区/权限报错不降级）
-│   ├── NamingTemplate.kt         # 占位符 {number}{title}{date}{maker}{series}{actress} + 非法字符清洗
+│   ├── NamingTemplate.kt         # 占位符 {number}{title}{date}{maker}{series}{actress}{part}{version} + 非法字符清洗
+│   ├── PartSuffix.kt             # 上下集分片识别：番号后的 -A/-B、-cd1/-cd2、-1/-2、上/下 → cdN
+│   ├── VersionSuffix.kt          # 多版本识别：1080p/4K/FHD/无码/中字 → 版本标记（供 {version}）
 │   ├── NfoWriter.kt              # Kodi/Jellyfin/Emby 兼容 movie.nfo
 │   └── Organizer.kt              # 建目录→链接/移动→写nfo→下图片→更新 file_records；含预览(preview)与逐条整理(executeItem，支持重整已整理记录)
 ├── job/

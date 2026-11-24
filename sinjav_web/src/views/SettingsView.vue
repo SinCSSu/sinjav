@@ -261,9 +261,19 @@
             <el-input
               v-model="form.namingTemplate"
               style="max-width: 500px"
-              placeholder="{number}/{number}"
+              placeholder="{number}/{number}-{part}{version}"
             />
-            <div class="hint">占位符：{number} {title} {date} {maker} {series} {actress}</div>
+            <div class="hint">
+              占位符：{number} {title} {date} {maker} {series} {actress} {part} {version}
+            </div>
+            <div class="hint">
+              {part}：上下集分片后缀（-cd1/-cd2），如 <code>{number}/{number} - {title}-{part}</code>；
+              无分片时自动省略
+            </div>
+            <div class="hint">
+              {version}：多版本标记（1080p / 4K / 无码 / 中字），渲染为 <code> - 1080p</code>；
+              同番号多分辨率靠它区分，无标记时自动省略
+            </div>
           </el-form-item>
           <el-form-item label="冲突策略">
             <el-select v-model="form.conflictPolicy" style="width: 200px">

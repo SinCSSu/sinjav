@@ -56,7 +56,9 @@ sinjav:
   organize:
     target-dir: ""
     mode: hardlink            # hardlink | symlink | move | copy
-    naming-template: "{number}/{number}"
+    # {part} 上下集分片后缀（-cd1/-cd2）；{version} 多版本标记（ - 1080p / - 4K）
+    # 两者在无对应标识时连同前面的分隔符一起消失，单文件影片路径不变
+    naming-template: "{number}/{number}-{part}{version}"
     conflict-policy: skip     # skip | overwrite | rename
     generate-nfo: true
     download-images: true

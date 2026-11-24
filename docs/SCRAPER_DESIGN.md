@@ -118,7 +118,9 @@
 
 - `movie.nfo` + `poster.jpg`（裁剪竖版）+ `fanart.jpg`（**横版原图**，Emby 背景需要 landscape）+ `preview{i}.jpg`
 - `videoOnly=true`：只转移视频，跳过 nfo 与图片（适配 Emby 已刮好的多分辨率入库）
-- 命名模板占位符：`{number} {title} {date} {maker} {series} {actress}`（actress 取第一位；title 用原文不用译名）
+- 命名模板占位符：`{number} {title} {date} {maker} {series} {actress} {part} {version}`（actress 取第一位；title 用原文不用译名）
+  - `{part}`：上下集分片，渲染 `-cd1` / `-cd2`（Emby 分片，连续播放）
+  - `{version}`：同番号多版本，渲染 ` - 1080p` / ` - 4K` / ` - 无码` / ` - 中字`（Emby 多版本，可切换）
 - 非法字符清洗 + Windows 保留名处理（CON/PRN/AUX/NUL/COM1-9/LPT1-9）
 - mode ∈ hardlink/symlink/move/copy；conflictPolicy 默认 skip；move 记录不能再链接（重整以旧目标为新源）
 

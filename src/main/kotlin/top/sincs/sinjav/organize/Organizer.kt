@@ -70,9 +70,33 @@ class Organizer(
 
     private val log = LoggerFactory.getLogger(Organizer::class.java)
 
-    /** 预览：逐条计算目标路径，不写库不执行。已整理记录附带原结果信息（reorganize） */
-    fun preview(recordIds: List<Long>, params: OrganizeParams): OrganizePreviewResponse =
-        OrganizePreviewResponse(recordIds.map { previewOne(it, params) })
+    /**
+     * 预览：逐条计算目标路径，不写库不执行。已整理记录附带原结果信息（reorganize）。
+     *
+     * 额外做**批次内目标路径互撞检测**：同番号的多分辨率/多文件若模板未用 `{part}` / `{version}`，
+     * 会算出同一路径，执行时按冲突策略静默丢文件（skip 跳过、overwrite 覆盖）。预览阶段直接标红提示。
+     */
+    fun preview(recordIds: List<Long>, params: OrganizeParams): OrganizePreviewResponse {
+        val items = recordIds.map { previewOne(it, params) }
+        val duplicated = items
+            .filter { it.error == null && it.targetPath != null }
+            .groupBy { it.targetPath!!.lowercase() }
+            .filterValues { it.size > 1 }
+            .values
+            .flatten()
+            .map { it.recordId }
+            .toSet()
+        if (duplicated.isEmpty()) return OrganizePreviewResponse(items)
+        return OrganizePreviewResponse(
+            items.map {
+                if (it.recordId in duplicated) {
+                    it.copy(error = "目标路径与本次其他文件重复（执行时会互相跳过/覆盖）：${it.targetPath}")
+                } else {
+                    it
+                }
+            },
+        )
+    }
 
     private fun previewOne(recordId: Long, params: OrganizeParams): OrganizePreviewItem {
         val record = fileRecords.findById(recordId)
@@ -218,8 +242,14 @@ class Organizer(
         }
         val template = params.namingTemplate ?: props.organize.namingTemplate
         val targetRoot = requiredTargetDir(params)
+        // 上下集：从源文件名还原分片序号（-A/-B、-cd1/-cd2、上/下…）供 {part} 渲染，
+        // 同一番号的多个文件因此落到同目录的不同文件名上，由 Emby 合并为一个条目的分片
+        val part = PartSuffix.extract(record.fileName, movie.number)
+        // 同番号多版本：分辨率/来源标记（1080p、4K、无码、中字…）供 {version} 渲染，
+        // Emby 会把同目录的这些文件视为同一影片的多个版本（可切换画质）
+        val version = VersionSuffix.extract(record.fileName, movie.number)
         // 模板渲染结果：除最后一段外为子目录，最后一段为目标文件基名（扩展名沿用源文件）
-        val rendered = naming.render(template, movie, movies.findActresses(movie.id))
+        val rendered = naming.render(template, movie, movies.findActresses(movie.id), part, version)
         val parts = rendered.split('/').filter { it.isNotBlank() }
         val subDir = if (parts.size > 1) targetRoot.resolve(parts.dropLast(1).joinToString("/")) else targetRoot
         val baseName = parts.lastOrNull() ?: record.fileName.substringBeforeLast('.')

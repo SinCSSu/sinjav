@@ -49,4 +49,50 @@ class NamingTemplateTest {
         assertEquals("a_b__c", t.sanitizeFileName("a<b>:c"))
         assertEquals("_CON", t.sanitizeFileName("CON"))
     }
+
+    @Test
+    fun `part 占位符渲染分片后缀`() {
+        assertEquals("ABP-123/ABP-123", t.render("{number}/{number}-{part}", movie()))
+        assertEquals("ABP-123/ABP-123-cd1", t.render("{number}/{number}-{part}", movie(), part = "cd1"))
+        assertEquals("ABP-123/ABP-123-cd2", t.render("{number}/{number}-{part}", movie(), part = "cd2"))
+    }
+
+    @Test
+    fun `无分片时 part 连同前导分隔符一起消失`() {
+        assertEquals("ABP-123/ABP-123 - Title_ Test/1_", t.render("{number}/{number} - {title}-{part}", movie()))
+        assertEquals("ABP-123/ABP-123 - Title_ Test/1_", t.render("{number}/{number} - {title} - {part}", movie()))
+        assertEquals("ABP-123/ABP-123 - Title_ Test/1_", t.render("{number}/{number} - {title}{part}", movie()))
+    }
+
+    @Test
+    fun `有分片时两种写法都得到短横线加序号`() {
+        assertEquals("ABP-123/ABP-123 - Title_ Test/1_-cd1", t.render("{number}/{number} - {title}-{part}", movie(), part = "cd1"))
+        assertEquals("ABP-123/ABP-123 - Title_ Test/1_-cd1", t.render("{number}/{number} - {title}{part}", movie(), part = "cd1"))
+        assertEquals("ABP-123/ABP-123 - Title_ Test/1_-cd2", t.render("{number}/{number} - {title} - {part}", movie(), part = "cd2"))
+    }
+
+    @Test
+    fun `version 占位符渲染空格短横线空格加版本名`() {
+        assertEquals("ABP-123/ABP-123", t.render("{number}/{number}{version}", movie()))
+        assertEquals("ABP-123/ABP-123 - 1080p", t.render("{number}/{number}{version}", movie(), version = "1080p"))
+        assertEquals("ABP-123/ABP-123 - Title_ Test/1_ - 4K", t.render("{number}/{number} - {title}{version}", movie(), version = "4K"))
+        assertEquals("ABP-123/ABP-123 - Title_ Test/1_ - 1080p", t.render("{number}/{number} - {title} - {version}", movie(), version = "1080p"))
+    }
+
+    @Test
+    fun `part 与 version 可同时使用`() {
+        assertEquals(
+            "ABP-123/ABP-123 - Title_ Test/1_-cd1 - 1080p",
+            t.render("{number}/{number} - {title}{part}{version}", movie(), part = "cd1", version = "1080p"),
+        )
+        // 只有其中一个时，另一个不留下多余分隔符
+        assertEquals(
+            "ABP-123/ABP-123 - Title_ Test/1_-cd1",
+            t.render("{number}/{number} - {title}{part}{version}", movie(), part = "cd1"),
+        )
+        assertEquals(
+            "ABP-123/ABP-123 - Title_ Test/1_ - 1080p",
+            t.render("{number}/{number} - {title}{part}{version}", movie(), version = "1080p"),
+        )
+    }
 }
