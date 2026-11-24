@@ -92,6 +92,12 @@ data class OrganizeProps(
     var conflictPolicy: String = "skip",
     var generateNfo: Boolean = true,
     var downloadImages: Boolean = true,
+    /**
+     * 目标文件名/子目录名的最大字节数（UTF-8）。
+     * Linux/NAS 文件系统（ext4/btrfs/xfs）单个文件名上限 255 字节，日文每字 3 字节，
+     * 长标题很容易超限报 File name too long；超限时按字节边界截断（保留扩展名）。
+     */
+    var maxFilenameBytes: Int = 240,
 )
 
 data class ScanProps(

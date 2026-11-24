@@ -88,6 +88,48 @@
         </div>
 
         <div class="lower-groups">
+        <el-collapse v-model="failedOpen" class="organized-collapse">
+          <el-collapse-item name="failed">
+            <template #title>
+              <span class="group-head-text">失败（{{ failedTotal }}）—— 上次整理失败，修复原因（如重新刮削）后可勾选重试</span>
+            </template>
+            <div v-loading="loadingFailed" class="card-list card-list-organized">
+              <label v-for="r in failedRecords" :key="r.recordId" class="media-card">
+                <el-checkbox
+                  :model-value="selected.has(r.recordId)"
+                  @change="toggleSelect(r.recordId)"
+                  @click.stop
+                />
+                <div class="cover">
+                  <img
+                    v-if="r.coverUrl"
+                    :src="localImg(r.number || '', 'poster.jpg')"
+                    loading="lazy"
+                    alt=""
+                    @error="imgFallback($event, imgProxy(r.coverUrl))"
+                  />
+                  <div v-else class="cover-placeholder">{{ r.number || '?' }}</div>
+                </div>
+                <div class="info">
+                  <div class="num">{{ r.number || '未识别' }}</div>
+                  <div class="title" :title="r.title || r.fileName">{{ r.title || r.fileName }}</div>
+                  <div class="path">
+                    <el-tag size="small" type="danger">失败</el-tag>
+                    {{ r.organizeError || '未知原因' }}
+                  </div>
+                </div>
+              </label>
+              <div v-if="failedLoaded && failedRecords.length < failedTotal" class="load-more">
+                <el-button link type="primary" :loading="loadingFailed" @click="loadFailed(false)">
+                  加载更多
+                </el-button>
+              </div>
+              <el-empty v-if="failedLoaded && !failedRecords.length" description="没有整理失败的文件" :image-size="60" />
+              <div v-if="!failedLoaded" class="load-more">展开后加载</div>
+            </div>
+          </el-collapse-item>
+        </el-collapse>
+
         <el-collapse v-model="existsOpen" class="organized-collapse">
           <el-collapse-item name="exists">
             <template #title>
@@ -322,6 +364,13 @@ const existsPage = ref(0)
 const existsLoaded = ref(false)
 const loadingExists = ref(false)
 const existsOpen = ref<string[]>([])
+// 失败分组：上次整理失败（未刮削/文件名超长等），可勾选重试
+const failedRecords = ref<OrganizeRecordItem[]>([])
+const failedTotal = ref(0)
+const failedPage = ref(0)
+const failedLoaded = ref(false)
+const loadingFailed = ref(false)
+const failedOpen = ref<string[]>([])
 const selected = ref(new Set<number>())
 
 // 右列：预览
@@ -329,7 +378,12 @@ const previews = ref<OrganizePreviewItem[]>([])
 const previewing = ref(false)
 const submitting = ref(false)
 
-const allRecords = computed(() => [...pendingRecords.value, ...existsRecords.value, ...organizedRecords.value])
+const allRecords = computed(() => [
+  ...pendingRecords.value,
+  ...existsRecords.value,
+  ...failedRecords.value,
+  ...organizedRecords.value,
+])
 const recordMap = computed(() => new Map(allRecords.value.map((r) => [r.recordId, r])))
 
 const pendingAllSelected = computed(
@@ -349,17 +403,22 @@ async function onOpen() {
   organizedRecords.value = []
   organizingRecords.value = []
   existsRecords.value = []
+  failedRecords.value = []
   organizedTotal.value = 0
   organizingTotal.value = 0
   existsTotal.value = 0
+  failedTotal.value = 0
   organizingLoaded.value = false
   existsLoaded.value = false
+  failedLoaded.value = false
   organizedPage.value = 0
   existsPage.value = 0
+  failedPage.value = 0
   pendingPage.value = 0
   organizedLoaded.value = false
   organizedOpen.value = []
   existsOpen.value = []
+  failedOpen.value = []
   await loadPending(true)
   // 快捷入口：按番号预选该影片的待整理文件记录
   const preset = props.presetNumbers ?? []
@@ -370,14 +429,16 @@ async function onOpen() {
         .map((r) => r.recordId),
     )
   }
-  // 已整理/已存在总数用于折叠标题展示（只取 total）
+  // 已整理/已存在/失败总数用于折叠标题展示（只取 total）
   try {
-    const [p, e] = await Promise.all([
+    const [p, e, f] = await Promise.all([
       api.listOrganizeRecords('organized', 1, 1),
       api.listOrganizeRecords('exists', 1, 1),
+      api.listOrganizeRecords('failed', 1, 1),
     ])
     organizedTotal.value = p.total
     existsTotal.value = e.total
+    failedTotal.value = f.total
   } catch {
     /* 打开时获取失败不阻塞 */
   }
@@ -459,9 +520,35 @@ async function loadOrganizing(reset: boolean) {
   }
 }
 
+async function loadFailed(reset: boolean) {
+  loadingFailed.value = true
+  try {
+    const page = reset ? 1 : failedPage.value + 1
+    const p = await api.listOrganizeRecords('failed', page, PAGE_SIZE)
+    if (reset) {
+      failedRecords.value = p.items
+      failedPage.value = 1
+    } else {
+      failedRecords.value.push(...p.items)
+      failedPage.value = page
+    }
+    failedTotal.value = p.total
+    failedLoaded.value = true
+  } catch (e) {
+    ElMessage.error(e instanceof Error ? e.message : String(e))
+  } finally {
+    loadingFailed.value = false
+  }
+}
+
 // 已存在分组默认折叠，首次展开时才加载
 watch(existsOpen, (v) => {
   if (v.includes('exists') && !existsLoaded.value) loadExists(true)
+})
+
+// 失败分组默认折叠，首次展开时才加载
+watch(failedOpen, (v) => {
+  if (v.includes('failed') && !failedLoaded.value) loadFailed(true)
 })
 
 // 整理中默认折叠，首次展开时才加载
@@ -579,6 +666,7 @@ async function submitOrganize(
         loadOrganizing(true)
         loadOrganized(true)
         loadExists(true)
+        if (failedLoaded.value) loadFailed(true)
         organizingOpen.value = ['organizing']
       }, 800)
     } else {

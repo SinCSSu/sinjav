@@ -129,7 +129,7 @@ class FileRecordController(private val fileRecords: FileRecordRepository) {
         return PageDto.of(pg, sz, p.total, p.items.map { FileRecordDto.of(it) })
     }
 
-    /** 整理弹窗列表：按 group（pending/organizing/organized/exists）分组返回文件记录（联出影片标题/封面） */
+    /** 整理弹窗列表：按 group（pending/organizing/organized/failed/exists）分组返回文件记录（联出影片标题/封面） */
     @GetMapping("/organize/records")
     fun organizeRecords(
         @RequestParam(defaultValue = "1") page: Int,
@@ -137,8 +137,8 @@ class FileRecordController(private val fileRecords: FileRecordRepository) {
         @RequestParam group: String,
         @RequestParam(required = false) keyword: String?,
     ): PageDto<OrganizeRecordDto> {
-        require(group in setOf("pending", "organizing", "organized", "exists")) {
-            "group 必须为 pending/organizing/organized/exists"
+        require(group in setOf("pending", "organizing", "organized", "failed", "exists")) {
+            "group 必须为 pending/organizing/organized/failed/exists"
         }
         val pg = page.coerceAtLeast(1)
         val sz = size.coerceIn(1, 500)
@@ -150,6 +150,7 @@ class FileRecordController(private val fileRecords: FileRecordRepository) {
                     recordId = it.id, sourcePath = it.sourcePath, fileName = it.fileName,
                     fileSize = it.fileSize, number = it.number, title = it.title, coverUrl = it.coverUrl,
                     organizeStatus = it.organizeStatus, targetPath = it.targetPath, linkMode = it.linkMode,
+                    organizeError = it.organizeError,
                 )
             },
         )

@@ -226,6 +226,8 @@ export interface OrganizeRecordItem {
   organizeStatus: OrganizeStatus
   targetPath?: string | null
   linkMode?: LinkMode | null
+  /** 整理失败原因（failed 分组展示用） */
+  organizeError?: string | null
 }
 
 export interface OrganizePreviewRequest {

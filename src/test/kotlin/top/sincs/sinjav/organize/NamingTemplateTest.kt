@@ -95,4 +95,28 @@ class NamingTemplateTest {
             t.render("{number}/{number} - {title}{part}{version}", movie(), version = "1080p"),
         )
     }
+
+    @Test
+    fun `字节截断不切破多字节字符`() {
+        val long = "あ".repeat(100) // 100 个日文字符 = 300 UTF-8 字节
+        val cut = t.truncateToBytes(long, 240)
+        // 240 字节恰好是 80 个 3 字节字符，无残缺字符
+        assertEquals(80, cut.length)
+        assertEquals(240, cut.toByteArray(Charsets.UTF_8).size)
+    }
+
+    @Test
+    fun `字节截断回退到完整字符边界`() {
+        val s = "abあい" // 2 + 3 + 3 = 8 字节
+        // 截到 6 字节会切进「い」中间，回退到「い」之前 → "abあ"
+        assertEquals("abあ", t.truncateToBytes(s, 6))
+        assertEquals("ab", t.truncateToBytes(s, 4))
+    }
+
+    @Test
+    fun `未超限与边界输入`() {
+        assertEquals("abc", t.truncateToBytes("abc", 240))
+        assertEquals("", t.truncateToBytes("abc", 0))
+        assertEquals("", t.truncateToBytes("あ", 1)) // 1 字节放不下完整字符 → 空
+    }
 }

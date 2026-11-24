@@ -54,6 +54,20 @@ class NamingTemplate {
         return s.ifBlank { "unnamed" }
     }
 
+    /**
+     * 按 UTF-8 字节数截断（不切破多字节字符），用于 NAS/ext4 等单文件名 255 字节上限的文件系统。
+     * 超限时报 File name too long，故渲染出的文件名/目录名需先经此方法限长。
+     */
+    fun truncateToBytes(s: String, maxBytes: Int): String {
+        if (maxBytes <= 0) return ""
+        val bytes = s.toByteArray(Charsets.UTF_8)
+        if (bytes.size <= maxBytes) return s
+        var cut = maxBytes
+        // 回退到完整字符边界：多字节序列的后续字节以 0b10 开头
+        while (cut > 0 && (bytes[cut].toInt() and 0xC0) == 0x80) cut--
+        return String(bytes, 0, cut, Charsets.UTF_8)
+    }
+
     companion object {
         private val RESERVED_NAMES = setOf(
             "CON", "PRN", "AUX", "NUL",

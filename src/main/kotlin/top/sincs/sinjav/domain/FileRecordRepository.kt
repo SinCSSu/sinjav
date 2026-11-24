@@ -57,6 +57,7 @@ class FileRecordRepository(private val jdbc: NamedParameterJdbcTemplate) {
         val organizeStatus: String,
         val targetPath: String?,
         val linkMode: String?,
+        val organizeError: String?,
     )
 
     private val ORGANIZE_RECORD_MAPPER = RowMapper { rs, _ ->
@@ -71,6 +72,7 @@ class FileRecordRepository(private val jdbc: NamedParameterJdbcTemplate) {
             organizeStatus = rs.getString("organize_status"),
             targetPath = rs.getString("target_path"),
             linkMode = rs.getString("link_mode"),
+            organizeError = rs.getString("organize_error"),
         )
     }
 
@@ -78,11 +80,13 @@ class FileRecordRepository(private val jdbc: NamedParameterJdbcTemplate) {
      * 按整理状态分组列出文件记录（已联出影片标题/封面），keyword 模糊匹配番号/文件名/标题。
      * group=exists 为「已存在」分组：emby_items 快照中已有该番号、但本地尚未整理的视频；
      * group=pending 时排除这些番号，保证分组互斥。
+     * group=failed 为「失败」分组：整理失败的记录（含未刮削/文件名超长等），可勾选重试。
      */
     fun listForOrganize(page: Int, size: Int, group: String, keyword: String?): Pair<List<OrganizeRecordRow>, Long> {
         val organizeStatus = when (group) {
             "organized" -> "organized"
             "organizing" -> "organizing"
+            "failed" -> "failed"
             else -> "pending"
         }
         val conditions = mutableListOf("fr.recognize_status = 'recognized'", "fr.organize_status = :os")
@@ -104,7 +108,7 @@ class FileRecordRepository(private val jdbc: NamedParameterJdbcTemplate) {
             """
             SELECT fr.id, fr.source_path, fr.file_name, fr.file_size, fr.number,
                    m.title AS title, m.cover_url AS cover_url,
-                   fr.organize_status, fr.target_path, fr.link_mode
+                   fr.organize_status, fr.target_path, fr.link_mode, fr.organize_error
             $from ORDER BY fr.id LIMIT :limit OFFSET :offset
             """,
             params + mapOf("limit" to size, "offset" to (page - 1) * size),

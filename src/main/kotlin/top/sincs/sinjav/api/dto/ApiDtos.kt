@@ -292,6 +292,8 @@ data class OrganizeRecordDto(
     val recordId: Long, val sourcePath: String, val fileName: String, val fileSize: Long,
     val number: String?, val title: String?, val coverUrl: String?,
     val organizeStatus: String, val targetPath: String?, val linkMode: String?,
+    /** 整理失败原因（failed 分组展示用） */
+    val organizeError: String? = null,
 )
 
 data class SettingsDto(

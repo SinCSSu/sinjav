@@ -210,3 +210,23 @@ NAS 部署环境下 307 个番号批量刮削全部失败，定位到两个**代
   能覆盖整体来源）、`MovieRepositoryTest` 两条（preview_candidates 落库读回 / 缺省为空）。
   手写 movies 表的测试（`ImageStoreTest`、`ScrapeServiceAutoPhotoTest`）已同步补 `preview_candidates` 列，
   新增表列时必须一起改。`gradlew test` 203 例全绿。
+
+## 11. 2026-11-25 增量：文件名超长截断 + 整理失败分组（NAS 实测问题）
+
+NAS 上整理批量失败两类根因（失败明细 41 条 vs 待整理 20 条的差值之谜）：
+
+- **File name too long**：ext4/btrfs 单个文件名上限 255 字节，日文 UTF-8 每字 3 字节，`{number} - {title}` 模板轻松超限。
+  修复：`OrganizeProps.maxFilenameBytes`（默认 240，`sinjav.organize.max-filename-bytes` 可配）；
+  `NamingTemplate.truncateToBytes` 按 UTF-8 字节边界截断（回退完整字符，不切破多字节）；
+  `Organizer.computeTarget` 对**子目录段与文件基名**逐段截断（文件基名按「上限−扩展名字节」截，保证整体不超限）；
+  手动覆盖目标路径（overrideTargetPath）同样截断。预览走同一计算，截断结果预览即可见。
+- **失败记录在整理弹窗中不可见、无法重试**：弹窗原有 pending/organizing/organized/exists 四组，
+  `organize_status='failed'` 的记录（文件名超长的 20 条）任何组都不显示；且 `executeOne` 的
+  「未识别番号/无元数据/未成功刮削」提前 return **不落状态**，被 finally 兜底复位回 pending
+  （未刮削的 21 条，差的那 1 条是被 exists 分组互斥排除的）。修复：
+  - 新增 `group=failed` 分组（`listForOrganize` / QueryControllers / openapi），`OrganizeRecordDto`/`OrganizeRecordRow`
+    增 `organizeError`，失败卡片直接展示原因，可勾选重试（重试走 executeItem→executeOne，failed 不是 organized 不会触发重整删除逻辑）；
+  - `executeOne` 提前失败改为 `failEarly`：落 `failed` 状态 + 写 organize_error，不再静默回 pending；
+    重新刮削成功后从失败分组勾选重试即可。
+- 前端 `OrganizeDialog.vue` 新增「失败（N）」折叠组（懒加载、错误原因 tag、可勾选、提交后刷新）；
+  types/api 同步。测试：`NamingTemplateTest` 增 3 个字节截断用例（多字节边界/回退/空输入），全量 206 例绿，`npm run build` 过。

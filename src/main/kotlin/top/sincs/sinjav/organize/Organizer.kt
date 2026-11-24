@@ -142,10 +142,10 @@ class Organizer(
         overrideMode: String? = null,
     ): OrganizeResult {
         val number = record.number
-            ?: return OrganizeResult(false, message = "文件未识别出番号")
+            ?: return failEarly(record, "文件未识别出番号")
         val movie = movies.findByNumber(number)
-            ?: return OrganizeResult(false, message = "番号 $number 无元数据（未刮削）")
-        if (movie.status != "scraped") return OrganizeResult(false, message = "番号 $number 未成功刮削")
+            ?: return failEarly(record, "番号 $number 无元数据（未刮削）")
+        if (movie.status != "scraped") return failEarly(record, "番号 $number 未成功刮削")
 
         val mode = overrideMode ?: requiredMode(params)
         val strategy = strategyOf(mode)
@@ -234,10 +234,11 @@ class Organizer(
             val p = Path.of(overrideTargetPath.trim())
             val ext = record.fileName.substringAfterLast('.', "")
             val name = p.fileName.toString()
+            val maxBytes = props.organize.maxFilenameBytes
             return if (ext.isNotBlank() && name.substringAfterLast('.', "") != ext) {
-                p.resolveSibling(naming.sanitizeFileName("$name.$ext"))
+                p.resolveSibling(naming.truncateToBytes(naming.sanitizeFileName("$name.$ext"), maxBytes))
             } else {
-                p.resolveSibling(naming.sanitizeFileName(name))
+                p.resolveSibling(naming.truncateToBytes(naming.sanitizeFileName(name), maxBytes))
             }
         }
         val template = params.namingTemplate ?: props.organize.namingTemplate
@@ -250,11 +251,19 @@ class Organizer(
         val version = VersionSuffix.extract(record.fileName, movie.number)
         // 模板渲染结果：除最后一段外为子目录，最后一段为目标文件基名（扩展名沿用源文件）
         val rendered = naming.render(template, movie, movies.findActresses(movie.id), part, version)
+        val maxBytes = props.organize.maxFilenameBytes
         val parts = rendered.split('/').filter { it.isNotBlank() }
-        val subDir = if (parts.size > 1) targetRoot.resolve(parts.dropLast(1).joinToString("/")) else targetRoot
+        // NAS/ext4 等文件系统单段路径名上限 255 字节，超限报 File name too long，逐段按 UTF-8 字节截断
+        val subDir = if (parts.size > 1) {
+            targetRoot.resolve(parts.dropLast(1).joinToString("/") { naming.truncateToBytes(it, maxBytes) })
+        } else {
+            targetRoot
+        }
         val baseName = parts.lastOrNull() ?: record.fileName.substringBeforeLast('.')
         val ext = record.fileName.substringAfterLast('.', "")
-        val targetName = if (ext.isNotBlank()) "$baseName.$ext" else baseName
+        val suffix = if (ext.isNotBlank()) ".$ext" else ""
+        // 文件基名按「上限 - 扩展名字节」截断，保证 基名+扩展名 整体不超限
+        val targetName = naming.truncateToBytes(baseName, maxBytes - suffix.toByteArray(Charsets.UTF_8).size) + suffix
         return subDir.resolve(naming.sanitizeFileName(targetName))
     }
 
@@ -316,11 +325,16 @@ class Organizer(
         }
     }
 
+    /** 执行前的硬性失败（未识别/未刮削）：落 failed 状态并写错误原因，避免静默回到待整理看不到失败 */
+    private fun failEarly(record: FileRecord, message: String): OrganizeResult {
+        fileRecords.updateOrganizeResult(record.id, null, null, "failed", message)
+        return OrganizeResult(false, message = message)
+    }
+
     /** 整理方式必填（不再回退全局配置） */
     private fun requiredMode(params: OrganizeParams): String =
         params.mode?.takeIf { it.isNotBlank() }
             ?: throw IllegalArgumentException("整理方式（mode）必填，请每次整理时指定")
-
     /** 目标目录必填（不再回退全局配置） */
     private fun requiredTargetDir(params: OrganizeParams): Path =
         params.targetDir?.takeIf { it.isNotBlank() }?.let { Path.of(it.trim()) }

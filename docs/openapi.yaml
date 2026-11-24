@@ -414,13 +414,14 @@ paths:
         按分组返回文件记录，联出影片标题与封面。
         exists 分组为「已存在」：番号已存在于 Emby（最近一次 POST /emby/sync 快照）且本地尚未整理；
         pending 分组会排除这些番号，保证分组互斥。
+        failed 分组为「失败」：整理失败的记录（organize_error 给出原因），可勾选重新整理。
       parameters:
         - name: group
           in: query
           required: true
           schema:
             type: string
-            enum: [pending, organizing, organized, exists]
+            enum: [pending, organizing, organized, failed, exists]
         - name: page
           in: query
           schema:
@@ -1834,6 +1835,10 @@ components:
           type: string
           nullable: true
           enum: [hardlink, symlink, move, copy, null]
+        organizeError:
+          type: string
+          nullable: true
+          description: 整理失败原因（failed 分组展示用）
       required: [recordId, sourcePath, fileName, fileSize, organizeStatus]
 
     SettingsUpdate:

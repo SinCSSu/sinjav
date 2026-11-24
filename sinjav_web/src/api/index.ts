@@ -236,7 +236,7 @@ export const api = {
     return post<OrganizePreviewResponse>('/organize/preview', body)
   },
   /** 整理弹窗文件记录列表（group: pending | organizing | organized | exists） */
-  listOrganizeRecords(group: 'pending' | 'organizing' | 'organized' | 'exists', page = 1, size = 100, keyword?: string) {
+  listOrganizeRecords(group: 'pending' | 'organizing' | 'organized' | 'failed' | 'exists', page = 1, size = 100, keyword?: string) {
     return request<Paged<OrganizeRecordItem>>(
       `/organize/records${qs({ group, page, size, keyword })}`,
     )
